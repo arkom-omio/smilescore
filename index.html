@@ -34,10 +34,13 @@
 
     <!-- НАШЕ ПРИЛОЖЕНИЕ (JS/JSX, без TypeScript!) -->
     <script type="text/babel" data-presets="env,react">
-      const { useEffect, useRef, useState } = React;
-      const FM = window.FramerMotion || {};
-      const motion = FM.motion || (({children,...rest}) => React.createElement('div', rest, children));
-      const AnimatePresence = FM.AnimatePresence || (({children}) => children);
+// СТАЛО (надёжный фолбэк без Framer Motion)
+const FM = window.FramerMotion || {};
+const AnimatePresence = FM.AnimatePresence || (({ children }) => <>{children}</>);
+// motion.<tag> всегда существует (div/h1 и любые другие теги)
+const motion = FM.motion ?? new Proxy({}, {
+  get: (_t, tag) => (props) => React.createElement(tag, props)
+});
 
       const prettyDate = () => new Date().toLocaleString();
       const MAX_SIZE = 15 * 1024 * 1024;
