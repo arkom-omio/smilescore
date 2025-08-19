@@ -349,42 +349,43 @@
         await acceptFile(new File([blob],'demo-smile.png',{type:'image/png'}));
       }
 
-async function startCamera(){
-  try{
-    reset();
-    setVideoReady(false);
+      // ==== ОБНОВЛЁННАЯ ИНИЦИАЛИЗАЦИЯ КАМЕРЫ ====
+      async function startCamera(){
+        try{
+          reset();
+          setVideoReady(false);
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal:'user' }, width:{ ideal:1280 }, height:{ ideal:720 } },
-      audio: false
-    });
-    streamRef.current = stream;
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal:'user' }, width:{ ideal:1280 }, height:{ ideal:720 } },
+            audio: false
+          });
+          streamRef.current = stream;
 
-    const v = videoRef.current;
-    if (v) {
-      v.setAttribute('playsinline','true');
-      v.muted = true;
-      v.autoplay = true;
-      v.srcObject = stream;
+          const v = videoRef.current;
+          if (v) {
+            v.setAttribute('playsinline','true');
+            v.muted = true;
+            v.autoplay = true;
+            v.srcObject = stream;
 
-      // считаем готовым при любом из событий
-      const markReady = () => setVideoReady(true);
-      v.addEventListener('loadedmetadata', markReady, { once:true });
-      v.addEventListener('loadeddata',    markReady, { once:true });
-      v.addEventListener('playing',       markReady, { once:true });
+            // считаем готовым при любом из событий
+            const markReady = () => setVideoReady(true);
+            v.addEventListener('loadedmetadata', markReady, { once:true });
+            v.addEventListener('loadeddata',    markReady, { once:true });
+            v.addEventListener('playing',       markReady, { once:true });
 
-      // «прогреть» пайплайн и подождать кадр
-      try { await warmupVideo(v, stream); } catch {}
+            // «прогреть» пайплайн и подождать кадр
+            try { await warmupVideo(v, stream); } catch {}
 
-      // запасной фолбэк: если браузер упрямится, просто разрешаем кнопку через 2с
-      setTimeout(() => { if (!v.videoWidth || v.readyState < 2) setVideoReady(true); }, 2000);
-    }
+            // запасной фолбэк: если браузер упрямится — просто разрешаем кнопку
+            setTimeout(() => { if (!v.videoWidth || v.readyState < 2) setVideoReady(true); }, 2000);
+          }
 
-    setCamOn(true);
-  }catch(e){
-    alert('Не удалось открыть камеру: '+((e && e.message) || e));
-  }
-}
+          setCamOn(true);
+        }catch(e){
+          alert('Не удалось открыть камеру: '+((e && e.message) || e));
+        }
+      }
 
       function stopCamera(){
         const s=streamRef.current; if(s){ s.getTracks().forEach(t=>t.stop()); streamRef.current=null; }
@@ -495,9 +496,12 @@ async function startCamera(){
                 <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
                   <video ref={videoRef} autoPlay playsInline muted className="w-full h-[420px] object-cover" />
                   <div className="absolute right-4 bottom-4 flex gap-2">
-                    <button onClick={takePhoto} disabled={!videoReady}
+                    <!-- Кнопка активна, как только камера открыта -->
+                    <button
+                      onClick={takePhoto}
+                      disabled={!camOn}
                       className="rounded-xl bg-white text-black px-3 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed">
-                      {videoReady ? 'Сфотографировать' : 'Камера инициализируется…'}
+                      {videoReady ? 'Сфотографировать' : 'Сделать снимок (пробуем)'}
                     </button>
                     <button onClick={stopCamera} className="rounded-xl bg-white/10 hover:bg-white/20 px-3 py-2 text-sm">Закрыть</button>
                   </div>
