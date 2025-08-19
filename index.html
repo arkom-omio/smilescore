@@ -229,9 +229,35 @@ function handleFile(f){
         ? new Promise(function(res){ v.requestVideoFrameCallback(function(){ res(); }); })
         : new Promise(function(res){ requestAnimationFrame(function(){ res(); }); });
     }
-    async function ensureVideoReady(v){
-      try{ await v.play(); }catch(e){}
-      for(var i=0;i<3;i++) await nextVideoFrame(v);
+  async function ensureVideoReady(video, stream){
+  const wait = (ev) => new Promise(r => video.addEventListener(ev, r, { once:true }));
+
+  // попытка воспроизведения
+  try { await video.play(); } catch {}
+
+  // ждём метаданные (размер видео)
+  if (!video.videoWidth || !video.videoHeight) {
+    await Promise.race([ wait('loadedmetadata'), new Promise(r=>setTimeout(r,1000)) ]);
+  }
+
+  // "прогрев" пайплайна кадром (Safari/Chrome иногда ленятся)
+  const track = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+  if (track && 'ImageCapture' in window) {
+    try { const cap = new ImageCapture(track); await cap.grabFrame(); } catch {}
+  }
+
+  // ждём возможность проигрывания или реальные кадры, но не дольше 4 c
+  const t0 = performance.now();
+  while ((video.readyState < 2 || !video.videoWidth) && performance.now() - t0 < 4000) {
+    await new Promise(r => requestAnimationFrame(r));
+  }
+
+  // один реальный кадр, если поддерживается
+  if ('requestVideoFrameCallback' in video) {
+    await new Promise(r => video.requestVideoFrameCallback(() => r()));
+  }
+}
+
     }
     async function captureFrameFromVideo(v){
       const w=v.videoWidth||640, h=v.videoHeight||480;
