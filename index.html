@@ -160,17 +160,12 @@
       const inputRef=useRef(null);
       const [drag,setDrag]=useState(false);
       const [focused,setFocused]=useState(false);
-
 function handleFile(f){
   if (!f) return;
 
   const name = (f.name || '').toLowerCase();
-
-  // MIME-тип "image/*"
-  const isImageMime = /^image\//.test(f.type);        // ← важно: /…/ закрыт
-  // частые расширения картинок
+  const isImageMime = /^image\//.test(f.type);                 // ← ВАЖНО: закрывающий /
   const isCommonExt = /\.(png|jpe?g|webp|gif|bmp)$/i.test(name);
-  // HEIC/HEIF часто не поддерживаются в браузере
   const isHeic = /\.(heic|heif)$/i.test(name);
 
   if (!isImageMime && !isCommonExt && !isHeic) {
@@ -188,16 +183,18 @@ function handleFile(f){
   onFile(f);
 }
 
+function handlePaste(e){
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (let i = 0; i < items.length; i++){
+    const it = items[i];
+    if (/^image\//.test(it.type)) {                            // ← тоже с закрывающим /
+      const f = it.getAsFile();
+      if (f) { handleFile(f); break; }
+    }
+  }
+}
 
-      function handlePaste(e){
-        var items=e.clipboardData&&e.clipboardData.items; if(!items) return;
-        for(var i=0;i<items.length;i++){
-          var it=items[i];
-          if (/^image\//.test(it.type)) {                              // ← исправлено
-            var f=it.getAsFile(); if(f){ handleFile(f); break; }
-          }
-        }
-      }
 
       return(<div
         onDragOver={e=>{e.preventDefault(); setDrag(true);}}
