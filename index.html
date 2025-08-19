@@ -18,10 +18,15 @@
   <script>
     // Понятный оверлей ошибок
     addEventListener('error', e => {
-      var el=document.getElementById('err'); el.textContent='JS error: '+(e&&e.message||e); el.style.display='block';
+      const el=document.getElementById('err');
+      el.textContent='JS error: '+(e && e.message || e);
+      el.style.display='block';
     });
     addEventListener('unhandledrejection', e => {
-      var el=document.getElementById('err'); var r=e&&e.reason; el.textContent='Promise: '+(r&&(r.message||r)||e); el.style.display='block';
+      const el=document.getElementById('err');
+      const r=e && e.reason;
+      el.textContent='Promise: '+(r && (r.message||r) || e);
+      el.style.display='block';
     });
   </script>
 
@@ -33,27 +38,33 @@
 
   <!-- Приложение -->
   <script type="text/babel" data-presets="env,react">
-    /* ==== облегчённые "motion" стабы (без внешних зависимостей) ==== */
+    /* ==== "motion" стабы (без внешних зависимостей) ==== */
     const AnimatePresence = ({ children }) => <>{children}</>;
     const motion = new Proxy({}, { get: (_t, tag) => (props) => React.createElement(tag, props) });
-    /* ================================================================= */
+    /* =================================================== */
 
     const { useEffect, useRef, useState } = React;
     const prettyDate = () => new Date().toLocaleString();
     const MAX_SIZE = 15 * 1024 * 1024;
 
-    /* ===== Нормализация файла в безопасный dataURL (JPEG sRGB) ===== */
+    /* ===== Нормализация в безопасный JPEG dataURL ===== */
     async function fileToSafeDataURL(file){
-      const src = await new Promise(function(res,rej){
-        const fr=new FileReader(); fr.onload=()=>res(String(fr.result)); fr.onerror=rej; fr.readAsDataURL(file);
+      const src = await new Promise((res,rej)=>{
+        const fr=new FileReader();
+        fr.onload=()=>res(String(fr.result));
+        fr.onerror=rej;
+        fr.readAsDataURL(file);
       });
-      const img = await new Promise(function(res,rej){
-        const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=src;
+      const img = await new Promise((res,rej)=>{
+        const im=new Image();
+        im.onload=()=>res(im);
+        im.onerror=rej;
+        im.src=src;
       });
       const maxSide = 1400;
-      const scale = Math.min(1, maxSide/Math.max(img.width, img.height));
-      const w = Math.max(1, Math.round(img.width*scale));
-      const h = Math.max(1, Math.round(img.height*scale));
+      const s = Math.min(1, maxSide/Math.max(img.width,img.height));
+      const w = Math.max(1,Math.round(img.width*s));
+      const h = Math.max(1,Math.round(img.height*s));
       const c = document.createElement('canvas'); c.width=w; c.height=h;
       const x = c.getContext('2d');
       x.drawImage(img,0,0,w,h);
@@ -63,36 +74,38 @@
     /* ===== Получение ImageData для анализа ===== */
     function useImageData(url){
       const [data,setData] = useState(null);
-      useEffect(function(){
+      useEffect(()=>{
         let active=true;
-        (async function(){
+        (async()=>{
           if(!url){ setData(null); return; }
           const img=new Image(); img.crossOrigin='anonymous';
-          img.onload=function(){
+          img.onload=()=>{
             if(!active) return;
             const maxSide=640, sc=Math.min(1,maxSide/Math.max(img.width,img.height));
-            const w=Math.max(1,Math.round(img.width*sc)), h=Math.max(1,Math.round(img.height*sc));
+            const w=Math.max(1,Math.round(img.width*sc));
+            const h=Math.max(1,Math.round(img.height*sc));
             const c=document.createElement('canvas'); c.width=w; c.height=h;
             const x=c.getContext('2d'); if(!x){ setData(null); return; }
             x.drawImage(img,0,0,w,h);
-            try{ setData(x.getImageData(0,0,w,h)); }catch(e){ setData(null); }
+            try{ setData(x.getImageData(0,0,w,h)); }catch{ setData(null); }
           };
-          img.onerror=function(){ setData(null); };
+          img.onerror=()=>setData(null);
           img.src=url;
         })();
-        return function(){ active=false; };
+        return ()=>{ active=false; };
       },[url]);
       return data;
     }
 
     function analyzeJoy(imageData){
-      if(!imageData) return {brightness:0.6,saturation:0.4,warmth:0.5};
-      const data=imageData.data, width=imageData.width, height=imageData.height;
+      if(!imageData) return { brightness:0.6, saturation:0.4, warmth:0.5 };
+      const {data,width,height}=imageData;
       const step=Math.max(2,Math.round(Math.max(width,height)/160));
-      var n=0, sb=0, ss=0, sw=0;
-      for(var y=0;y<height;y+=step){
-        for(var x=0;x<width;x+=step){
-          const i=(y*width+x)*4, r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255;
+      let n=0, sb=0, ss=0, sw=0;
+      for(let y=0;y<height;y+=step){
+        for(let x=0;x<width;x+=step){
+          const i=(y*width+x)*4;
+          const r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255;
           const max=Math.max(r,g,b), min=Math.min(r,g,b);
           const l=0.299*r+0.587*g+0.114*b;
           const s=max===0?0:(max-min)/max;
@@ -100,7 +113,7 @@
           sb+=l; ss+=s; sw+=w; n++;
         }
       }
-      return {brightness:sb/n, saturation:ss/n, warmth:sw/n};
+      return { brightness:sb/n, saturation:ss/n, warmth:sw/n };
     }
     function scoreFromMetrics(m){
       const joy=0.5*m.brightness+0.3*m.saturation+0.2*m.warmth;
@@ -118,10 +131,15 @@
 
     function useCountUp(target, dur=1200){
       const [v,setV]=useState(0);
-      useEffect(function(){
+      useEffect(()=>{
         let r=0, s=performance.now();
-        const tick=function(t){ const p=Math.min(1,(t-s)/dur), e=1-Math.pow(1-p,3); setV(Math.round(target*e)); if(p<1) r=requestAnimationFrame(tick); };
-        r=requestAnimationFrame(tick); return function(){ cancelAnimationFrame(r); };
+        const tick=t=>{
+          const p=Math.min(1,(t-s)/dur), e=1-Math.pow(1-p,3);
+          setV(Math.round(target*e));
+          if(p<1) r=requestAnimationFrame(tick);
+        };
+        r=requestAnimationFrame(tick);
+        return ()=>cancelAnimationFrame(r);
       },[target,dur]);
       return v;
     }
@@ -136,7 +154,10 @@
           </g>
         </svg>
         <div className="absolute inset-0 grid place-items-center">
-          <div className="text-center"><div className="text-6xl font-semibold tracking-tight text-white/95">{d}</div><div className="mt-1 text-white/60">из 100</div></div>
+          <div className="text-center">
+            <div className="text-6xl font-semibold tracking-tight text-white/95">{d}</div>
+            <div className="mt-1 text-white/60">из 100</div>
+          </div>
         </div>
       </div>);
     }
@@ -151,66 +172,72 @@
         </div>
       </div>);
     }
-    function Toast({message,onClose}){ useEffect(function(){ const id=setTimeout(onClose,2400); return function(){ clearTimeout(id); }; },[onClose]);
+    function Toast({message,onClose}){ useEffect(()=>{ const id=setTimeout(onClose,2400); return()=>clearTimeout(id); },[onClose]);
       return <div className="fixed right-4 bottom-4 z-50 rounded-2xl bg-white text-black px-4 py-3 shadow-lg">{message}</div>;
     }
 
-    /* ===== Drag&Drop загрузка ===== */
+    /* ===== Загрузка файлов ===== */
     function DropZone({ onFile }){
       const inputRef=useRef(null);
       const [drag,setDrag]=useState(false);
       const [focused,setFocused]=useState(false);
-function handleFile(f){
-  if (!f) return;
 
-  const name = (f.name || '').toLowerCase();
-  const isImageMime = /^image\//.test(f.type);                 // ← ВАЖНО: закрывающий /
-  const isCommonExt = /\.(png|jpe?g|webp|gif|bmp)$/i.test(name);
-  const isHeic = /\.(heic|heif)$/i.test(name);
+      function handleFile(f){
+        if (!f) return;
+        const name = (f.name || '').toLowerCase();
+        const isImageMime = /^image\//.test(f.type);
+        const isCommonExt = /\.(png|jpe?g|webp|gif|bmp)$/i.test(name);
+        const isHeic = /\.(heic|heif)$/i.test(name);
 
-  if (!isImageMime && !isCommonExt && !isHeic) {
-    alert('Можно загружать только изображения (JPG/PNG/WebP/GIF/BMP)');
-    return;
-  }
-  if (isHeic) {
-    alert('HEIC/HEIF часто не поддерживается. Сохраните фото как JPG/PNG.');
-    return;
-  }
-  if (f.size > MAX_SIZE) {
-    alert('Файл слишком большой (лимит 15MB)');
-    return;
-  }
-  onFile(f);
-}
+        if (!isImageMime && !isCommonExt && !isHeic) {
+          alert('Можно загружать только изображения (JPG/PNG/WebP/GIF/BMP)');
+          return;
+        }
+        if (isHeic) {
+          alert('HEIC/HEIF часто не поддерживается. Сохраните фото как JPG/PNG.');
+          return;
+        }
+        if (f.size > MAX_SIZE) {
+          alert('Файл слишком большой (лимит 15MB)');
+          return;
+        }
+        onFile(f);
+      }
 
-function handlePaste(e){
-  const items = e.clipboardData && e.clipboardData.items;
-  if (!items) return;
-  for (let i = 0; i < items.length; i++){
-    const it = items[i];
-    if (/^image\//.test(it.type)) {                            // ← тоже с закрывающим /
-      const f = it.getAsFile();
-      if (f) { handleFile(f); break; }
-    }
-  }
-}
-
+      function handlePaste(e){
+        const items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+        for (let i=0;i<items.length;i++){
+          const it = items[i];
+          if (/^image\//.test(it.type)) {
+            const f = it.getAsFile();
+            if (f) { handleFile(f); break; }
+          }
+        }
+      }
 
       return(<div
         onDragOver={e=>{e.preventDefault(); setDrag(true);}}
         onDragLeave={()=>setDrag(false)}
-        onDrop={e=>{e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files&&e.dataTransfer.files[0]);}}
+        onDrop={e=>{e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files && e.dataTransfer.files[0]);}}
         onPaste={handlePaste}
-        onClick={()=>{ if(inputRef.current) inputRef.current.click(); }}
-        onKeyDown={e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); if(inputRef.current) inputRef.current.click(); } }}
+        onClick={()=>{ inputRef.current && inputRef.current.click(); }}
+        onKeyDown={e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); inputRef.current && inputRef.current.click(); } }}
         tabIndex={0} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
         role="button" aria-label="Загрузить фотографию"
-        className={["group relative flex flex-col items-center justify-center","h-[280px] rounded-3xl border-2 border-dashed",
-          (drag||focused)?"border-white/40":"border-white/20","bg-white/[0.04] backdrop-blur-xl","p-8 md:p-12 text-center cursor-pointer transition-colors",
-          drag?"ring-2 ring-white/40 bg-white/[0.06]":"hover:bg-white/[0.06]",focused?"outline-none ring-2 ring-white/30":""].join(" ")}>
+        className={[
+          "group relative flex flex-col items-center justify-center",
+          "h-[280px] rounded-3xl border-2 border-dashed",
+          (drag||focused)?"border-white/40":"border-white/20",
+          "bg-white/[0.04] backdrop-blur-xl",
+          "p-8 md:p-12 text-center cursor-pointer transition-colors",
+          drag?"ring-2 ring-white/40 bg-white/[0.06]":"hover:bg-white/[0.06]",
+          focused?"outline-none ring-2 ring-white/30":""
+        ].join(" ")}>
         <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.08]">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="opacity-90">
-            <path d="M12 16V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M7 9l5-5 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M12 16V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M7 9l5-5 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             <rect x="3" y="12" width="18" height="8" rx="2" stroke="currentColor" strokeWidth="1.5"/>
           </svg>
         </div>
@@ -223,38 +250,21 @@ function handlePaste(e){
     /* ===== Видеокамера: помощьники ===== */
     function nextVideoFrame(v){
       return ('requestVideoFrameCallback' in v)
-        ? new Promise(function(res){ v.requestVideoFrameCallback(function(){ res(); }); })
-        : new Promise(function(res){ requestAnimationFrame(function(){ res(); }); });
+        ? new Promise(res=>v.requestVideoFrameCallback(()=>res()))
+        : new Promise(res=>requestAnimationFrame(()=>res()));
     }
-  async function ensureVideoReady(video, stream){
-  const wait = (ev) => new Promise(r => video.addEventListener(ev, r, { once:true }));
-
-  // попытка воспроизведения
-  try { await video.play(); } catch {}
-
-  // ждём метаданные (размер видео)
-  if (!video.videoWidth || !video.videoHeight) {
-    await Promise.race([ wait('loadedmetadata'), new Promise(r=>setTimeout(r,1000)) ]);
-  }
-
-  // "прогрев" пайплайна кадром (Safari/Chrome иногда ленятся)
-  const track = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
-  if (track && 'ImageCapture' in window) {
-    try { const cap = new ImageCapture(track); await cap.grabFrame(); } catch {}
-  }
-
-  // ждём возможность проигрывания или реальные кадры, но не дольше 4 c
-  const t0 = performance.now();
-  while ((video.readyState < 2 || !video.videoWidth) && performance.now() - t0 < 4000) {
-    await new Promise(r => requestAnimationFrame(r));
-  }
-
-  // один реальный кадр, если поддерживается
-  if ('requestVideoFrameCallback' in video) {
-    await new Promise(r => video.requestVideoFrameCallback(() => r()));
-  }
-}
-
+    async function warmupVideo(video, stream){
+      // лёгкий «прогрев» конвейера, чтобы не получать чёрные кадры
+      const tracks = stream && stream.getVideoTracks ? stream.getVideoTracks() : [];
+      const track = tracks && tracks[0];
+      if (track && 'ImageCapture' in window) {
+        try { const cap = new ImageCapture(track); await cap.grabFrame(); } catch {}
+      }
+      if ('requestVideoFrameCallback' in video) {
+        await new Promise(r => video.requestVideoFrameCallback(() => r()));
+      } else {
+        await new Promise(r => requestAnimationFrame(() => r()));
+      }
     }
     async function captureFrameFromVideo(v){
       const w=v.videoWidth||640, h=v.videoHeight||480;
@@ -263,11 +273,11 @@ function handlePaste(e){
       ctx.drawImage(v,0,0,w,h);
       const sw=Math.min(48,w), sh=Math.min(48,h);
       const sample=ctx.getImageData(0,0,sw,sh).data;
-      var sum=0, n=sample.length/4;
-      for(var i=0;i<sample.length;i+=4){ sum += (0.299*sample[i] + 0.587*sample[i+1] + 0.114*sample[i+2])/255; }
+      let sum=0, n=sample.length/4;
+      for(let i=0;i<sample.length;i+=4){ sum += (0.299*sample[i] + 0.587*sample[i+1] + 0.114*sample[i+2])/255; }
       const brightness=sum/n;
-      const blob=await new Promise(function(r){ c.toBlob(r,'image/jpeg',0.92); });
-      return { blob: blob, brightness: brightness };
+      const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.92));
+      return { blob, brightness };
     }
 
     /* ======================= Приложение ======================= */
@@ -293,97 +303,93 @@ function handlePaste(e){
           const safe=await fileToSafeDataURL(f);
           setImgURL(safe);
           setFile(f);
-        }catch(e){ alert('Не удалось прочитать изображение. Попробуйте JPG/PNG.'); }
+        }catch{ alert('Не удалось прочитать изображение. Попробуйте JPG/PNG.'); }
       }
 
       const imageData=useImageData(imgURL);
-      useEffect(function(){
+      useEffect(()=>{
         if(!imgURL){ setMetrics(null); setScore(null); return; }
         const m=analyzeJoy(imageData); setMetrics(m); setScore(null);
         const dark = m && m.brightness<0.02 && m.saturation<0.02;
         setImgTooDark(!!dark);
       },[imgURL,imageData]);
 
-      useEffect(function(){
+      useEffect(()=>{
         if(!autoAnalyze||!imgURL||!metrics) return;
         if(score!=null||busy) return;
-        (async function(){ await handleAnalyze(); })();
+        (async()=>{ await handleAnalyze(); })();
       },[autoAnalyze,imgURL,metrics,score,busy]);
 
       async function handleAnalyze(){
         if(!imgURL){ setToast('Сначала загрузите фото'); return; }
         setBusy(true);
-        var m = metrics || analyzeJoy(imageData); if(!m) m=analyzeJoy(null);
+        let m = metrics || analyzeJoy(imageData); if(!m) m=analyzeJoy(null);
         if(!metrics) setMetrics(m);
-        await new Promise(function(r){ setTimeout(r,320); });
-        const s=scoreFromMetrics(m); setScore(s); setBusy(false); setToast('Готово! Улыбка оценена 😊');
-        if(file){
-          try{ setHistory(function(prev){ return [{url:imgURL,score:s,verdict:verdict(s),date:prettyDate()}].concat(prev).slice(0,6); }); }catch(e){}
+        await new Promise(r=>setTimeout(r,320));
+        const s=scoreFromMetrics(m);
+        setScore(s);
+        setBusy(false);
+        setToast('Готово! Улыбка оценена 😊');
+        if(imgURL){
+          try{ setHistory(prev => [{url:imgURL,score:s,verdict:verdict(s),date:prettyDate()}, ...prev].slice(0,6)); }catch{}
         }
       }
 
       function reset(){ setFile(null); setImgURL(null); setImgTooDark(false); setScore(null); setMetrics(null); }
 
       async function makeDemoPhoto(){
-        const size=640, c=document.createElement('canvas'); c.width=size; c.height=size; const x=c.getContext('2d'); if(!x) return;
+        const size=640, c=document.createElement('canvas'); c.width=size; c.height=size;
+        const x=c.getContext('2d'); if(!x) return;
         const g=x.createLinearGradient(0,0,size,size); g.addColorStop(0,'#6EE7F9'); g.addColorStop(1,'#A78BFA'); x.fillStyle=g; x.fillRect(0,0,size,size);
         x.beginPath(); x.arc(size/2,size/2,size*0.32,0,Math.PI*2); x.fillStyle='#FFE29A'; x.shadowColor='rgba(0,0,0,0.15)'; x.shadowBlur=18; x.fill(); x.shadowBlur=0;
         x.fillStyle='#3A2F2F'; x.beginPath(); x.arc(size*0.44,size*0.46,size*0.02,0,Math.PI*2); x.fill(); x.beginPath(); x.arc(size*0.56,size*0.46,size*0.02,0,Math.PI*2); x.fill();
         x.strokeStyle='#3A2F2F'; x.lineWidth=size*0.02; x.lineCap='round'; x.beginPath(); x.arc(size/2,size*0.53,size*0.12,0.15*Math.PI,0.85*Math.PI); x.stroke();
         const dataURL=c.toDataURL('image/png');
-        const res = await fetch(dataURL); const blob=await res.blob();
+        const blob=await (await fetch(dataURL)).blob();
         await acceptFile(new File([blob],'demo-smile.png',{type:'image/png'}));
       }
 
-  async function startCamera(){
-  try{
-    reset();
-    setVideoReady(false);
+      async function startCamera(){
+        try{
+          reset();
+          setVideoReady(false);
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal:'user' }, width: { ideal:1280 }, height: { ideal:720 } },
-      audio: false
-    });
-    streamRef.current = stream;
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode:{ ideal:'user' }, width:{ ideal:1280 }, height:{ ideal:720 } },
+            audio: false
+          });
+          streamRef.current = stream;
 
-    const v = videoRef.current;
-    if (v) {
-      // атрибуты ДО назначения потока
-      v.setAttribute('playsinline','true');
-      v.muted = true;
-      v.autoplay = true;
-      v.srcObject = stream;
-
-      // ждём готовность с таймаутом
-      try { await Promise.race([ ensureVideoReady(v, stream), new Promise((r,rej)=>setTimeout(()=>rej(new Error('timeout')), 5000)) ]); }
-      catch(_) {}
-      finally {
-        // считаем готовым, если появились размеры/readyState
-        const ok = (v.videoWidth>0 && v.readyState>=2);
-        setVideoReady(ok);
-        if (!ok) {
-          console.warn('Видео не успело инициализироваться, пробуйте ещё раз или дайте доступ камере.');
+          const v = videoRef.current;
+          if (v) {
+            v.setAttribute('playsinline','true');
+            v.autoplay = true;
+            v.muted = true;
+            v.srcObject = stream;
+            try { await v.play(); } catch {}
+            // прогрев в фоне, но не блокируем UI
+            warmupVideo(v, stream).catch(()=>{});
+            // через секунду считаем готовым (takePhoto допрогреет при необходимости)
+            setTimeout(()=>setVideoReady(true), 1000);
+          }
+          setCamOn(true);
+        }catch(e){
+          alert('Не удалось открыть камеру: '+((e&&e.message)||e));
         }
       }
-    }
-
-    setCamOn(true);
-  }catch(e){
-    alert('Не удалось открыть камеру: '+((e&&e.message)||e));
-  }
-}
 
       function stopCamera(){
-        const s=streamRef.current; if(s){ s.getTracks().forEach(function(t){ t.stop(); }); streamRef.current=null; }
+        const s=streamRef.current; if(s){ s.getTracks().forEach(t=>t.stop()); streamRef.current=null; }
         if(videoRef.current) videoRef.current.srcObject=null;
         setVideoReady(false);
         setCamOn(false);
       }
+
       async function takePhoto(){
         const v=videoRef.current; if(!v) return;
 
-        // 1) Лучший вариант: ImageCapture
-        var track=null;
+        // 1) ImageCapture (если доступен)
+        let track=null;
         if(streamRef.current && typeof streamRef.current.getVideoTracks==='function'){
           const tr=streamRef.current.getVideoTracks(); if(tr && tr.length) track=tr[0];
         }
@@ -393,23 +399,22 @@ function handlePaste(e){
             const blob=await cap.takePhoto();
             setFile(new File([blob],'camera-shot.jpg',{type: blob.type || 'image/jpeg'}));
             stopCamera(); return;
-          }catch(e){ /* фолбэк ниже */ }
+          }catch{ /* пойдём фолбэком */ }
         }
 
-        // 2) Фолбэк через canvas: ждём реальную готовность
-        await ensureVideoReady(v);
+        // 2) Фолбэк через canvas: допрогреем видео и попробуем несколько раз
+        await warmupVideo(v, streamRef.current);
 
-        // 3) Повторяем захват, пока кадр не "светлый"
-        for(var attempt=0; attempt<10; attempt++){
+        for(let attempt=0; attempt<10; attempt++){
           const shot=await captureFrameFromVideo(v);
           if(shot && shot.blob && shot.brightness>0.03){
             setFile(new File([shot.blob],'camera-shot.jpg',{type:'image/jpeg'}));
             stopCamera(); return;
           }
           await nextVideoFrame(v);
-          await new Promise(function(r){ setTimeout(r,80); });
+          await new Promise(r=>setTimeout(r,80));
         }
-        alert('Камера отдала слишком тёмный кадр. Попробуйте ещё раз или добавьте света.');
+        alert('Кадр получился слишком тёмным. Попробуйте ещё раз или добавьте света.');
       }
 
       async function exportPNG(){
@@ -418,23 +423,40 @@ function handlePaste(e){
         const bg=ctx.createLinearGradient(0,0,W,H); bg.addColorStop(0,'#0b0b0f'); bg.addColorStop(1,'#1a1b22'); ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
         const rg=ctx.createRadialGradient(W*0.8,H*0.1,0,W*0.8,H*0.1,W*0.6); rg.addColorStop(0,'rgba(123,97,255,0.35)'); rg.addColorStop(1,'transparent'); ctx.fillStyle=rg; ctx.fillRect(0,0,W,H);
 
-        const img=await new Promise(function(res,rej){ const im=new Image(); im.crossOrigin='anonymous'; im.onload=function(){res(im)}; im.onerror=function(){rej()}; im.src=imgURL; });
+        const img=await new Promise((res,rej)=>{ const im=new Image(); im.crossOrigin='anonymous'; im.onload=()=>res(im); im.onerror=rej; im.src=imgURL; });
 
         const px=90,py=140,pw=W-180,ph=620,r=36;
-        ctx.save(); ctx.beginPath(); ctx.moveTo(px+r,py); ctx.arcTo(px+pw,py,px+pw,py+ph,r); ctx.arcTo(px+pw,py+ph,px,py+ph,r); ctx.arcTo(px,py+ph,px,py,r); ctx.arcTo(px,py,px+pw,py,r); ctx.closePath(); ctx.clip();
-        const ir=img.width/img.height, fr=pw/ph; var dw=pw,dh=ph,dx=px,dy=py;
-        if(ir>fr){ dh=ph; dw=ph*ir; dx=px-(dw-pw)/2; } else { dw=pw; dh=pw/ir; dy=py-(dh-ph)/2; }
-        ctx.drawImage(img,dx,dy,dw,dh); ctx.restore();
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(px+r,py);
+        ctx.arcTo(px+pw,py,px+pw,py+ph,r);
+        ctx.arcTo(px+pw,py+ph,px,py+ph,r);
+        ctx.arcTo(px,py+ph,px,py,r);
+        ctx.arcTo(px,py,px+pw,py,r);
+        ctx.closePath();
+        ctx.clip();
 
-        ctx.fillStyle='white'; ctx.font='600 68px system-ui,-apple-system,Segoe UI,Roboto'; ctx.fillText('SmileScore',90,980);
-        const cx=260,cy=1120,rr=120,sw=18; ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=sw; ctx.lineCap='round'; ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.stroke();
-        const grad=ctx.createLinearGradient(cx-rr,cy-rr,cx+rr,cy+rr); grad.addColorStop(0,'#00E5FF'); grad.addColorStop(0.5,'#00FFA3'); grad.addColorStop(1,'#7B61FF'); ctx.strokeStyle=grad;
-        const end=(-Math.PI/2)+(Math.PI*2)*(score/100); ctx.beginPath(); ctx.arc(cx,cy,rr,-Math.PI/2,end); ctx.stroke();
+        const ir=img.width/img.height, fr=pw/ph;
+        let dw=pw,dh=ph,dx=px,dy=py;
+        if(ir>fr){ dh=ph; dw=ph*ir; dx=px-(dw-pw)/2; } else { dw=pw; dh=pw/ir; dy=py-(dh-ph)/2; }
+        ctx.drawImage(img,dx,dy,dw,dh);
+        ctx.restore();
+
+        ctx.fillStyle='white';
+        ctx.font='600 68px system-ui,-apple-system,Segoe UI,Roboto'; ctx.fillText('SmileScore',90,980);
+        const cx=260,cy=1120,rr=120,sw=18;
+        ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=sw; ctx.lineCap='round'; ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.stroke();
+        const grad=ctx.createLinearGradient(cx-rr,cy-rr,cx+rr,cy+rr);
+        grad.addColorStop(0,'#00E5FF'); grad.addColorStop(0.5,'#00FFA3'); grad.addColorStop(1,'#7B61FF');
+        ctx.strokeStyle=grad;
+        const end=(-Math.PI/2)+(Math.PI*2)*(score/100);
+        ctx.beginPath(); ctx.arc(cx,cy,rr,-Math.PI/2,end); ctx.stroke();
+
         ctx.textAlign='center'; ctx.font='600 64px system-ui,-apple-system,Segoe UI,Roboto'; ctx.fillText(String(score),cx,cy+24);
         ctx.textAlign='left'; ctx.font='600 48px system-ui,-apple-system,Segoe UI,Roboto'; ctx.fillText(verdict(score),430,1100);
         ctx.font='32px system-ui,-apple-system,Segoe UI,Roboto'; ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.fillText('Дата оценки: '+prettyDate(),430,1150);
 
-        await new Promise(function(r){ c.toBlob(function(b){ if(!b) return; const url=URL.createObjectURL(b); const a=document.createElement('a'); a.href=url; a.download='SmileScore.png'; a.click(); URL.revokeObjectURL(url); r(); },'image/png'); });
+        await new Promise(r=>c.toBlob(b=>{ if(!b) return; const url=URL.createObjectURL(b); const a=document.createElement('a'); a.href=url; a.download='SmileScore.png'; a.click(); URL.revokeObjectURL(url); r(); },'image/png'));
       }
 
       const gradientBg="bg-[#0b0b0f] bg-[radial-gradient(1200px_600px_at_80%_-10%,rgba(123,97,255,0.20),transparent_60%),radial-gradient(900px_500px_at_20%_120%,rgba(0,229,255,0.12),transparent_60%)]";
@@ -509,19 +531,21 @@ function handlePaste(e){
                 </label>
               </div>
 
-              {history.length>0 && (<div className="mt-2">
-                <div className="mb-2 text-white/60 text-sm">История</div>
-                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                  {history.map((h,i)=>(
-                    <button key={i} onClick={()=>{ setImgURL(h.url); setScore(h.score); setToast('Открыли сохранённый результат'); }}
-                      className="relative group rounded-xl overflow-hidden border border-white/10">
-                      <img src={h.url} alt={'result-'+i} className="h-24 w-full object-cover"/>
-                      <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity"/>
-                      <div className="absolute left-1.5 bottom-1.5 px-1.5 py-0.5 rounded-lg bg-black/60 text-white/90 text-[11px]">{h.score}</div>
-                    </button>
-                  ))}
+              {history.length>0 && (
+                <div className="mt-2">
+                  <div className="mb-2 text-white/60 text-sm">История</div>
+                  <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                    {history.map((h,i)=>(
+                      <button key={i} onClick={()=>{ setImgURL(h.url); setScore(h.score); setToast('Открыли сохранённый результат'); }}
+                        className="relative group rounded-xl overflow-hidden border border-white/10">
+                        <img src={h.url} alt={'result-'+i} className="h-24 w-full object-cover"/>
+                        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity"/>
+                        <div className="absolute left-1.5 bottom-1.5 px-1.5 py-0.5 rounded-lg bg-black/60 text-white/90 text-[11px]">{h.score}</div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>)}
+              )}
             </div>
 
             <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-6 md:p-8 backdrop-blur-xl">
@@ -552,7 +576,9 @@ function handlePaste(e){
             </div>
           </div>
 
-          <div className="mt-10 text-center text-white/50 text-sm">Создано с заботой. Это развлекательная оценка и всегда позитивная. Улыбнитесь сегодня кому-нибудь 😊</div>
+          <div className="mt-10 text-center text-white/50 text-sm">
+            Создано с заботой. Это развлекательная оценка и всегда позитивная. Улыбнитесь сегодня кому-нибудь 😊
+          </div>
         </main>
 
         {toast && <Toast message={toast} onClose={()=>setToast(null)}/>}
@@ -560,7 +586,10 @@ function handlePaste(e){
     }
 
     // sanity-check
-    (function(){ function within(s){ return s>=70 && s<=100; } console.assert(within(scoreFromMetrics({brightness:0.5,saturation:0.5,warmth:0.5}))); })();
+    (function(){
+      function within(s){ return s>=70 && s<=100; }
+      console.assert(within(scoreFromMetrics({brightness:0.5,saturation:0.5,warmth:0.5})));
+    })();
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App/>);
