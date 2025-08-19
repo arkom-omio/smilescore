@@ -161,28 +161,33 @@
       const [drag,setDrag]=useState(false);
       const [focused,setFocused]=useState(false);
 
-      function handleFile(f){
-        if(!f) return;
+function handleFile(f){
+  if (!f) return;
 
-        const name = (f.name || '').toLowerCase();
-        const isImageMime = /^image\//.test(f.type);                 // ← исправлено
-        const isHeic = /\.(heic|heif)$/i.test(name);
+  const name = (f.name || '').toLowerCase();
 
-        // Принимаем только изображения (по MIME или по распространённым расширениям)
-        if (!isImageMime && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(name) && !isHeic) {
-          alert('Можно загружать только изображения (JPG/PNG/WebP/GIF/BMP)');
-          return;
-        }
-        if (isHeic) { // HEIC/HEIF часто не поддерживается
-          alert('HEIC/HEIF часто не поддерживается. Сохраните фото как JPG/PNG.');
-          return;
-        }
-        if (f.size > MAX_SIZE) {
-          alert('Файл слишком большой (лимит 15MB)');
-          return;
-        }
-        onFile(f);
-      }
+  // MIME-тип "image/*"
+  const isImageMime = /^image\//.test(f.type);        // ← важно: /…/ закрыт
+  // частые расширения картинок
+  const isCommonExt = /\.(png|jpe?g|webp|gif|bmp)$/i.test(name);
+  // HEIC/HEIF часто не поддерживаются в браузере
+  const isHeic = /\.(heic|heif)$/i.test(name);
+
+  if (!isImageMime && !isCommonExt && !isHeic) {
+    alert('Можно загружать только изображения (JPG/PNG/WebP/GIF/BMP)');
+    return;
+  }
+  if (isHeic) {
+    alert('HEIC/HEIF часто не поддерживается. Сохраните фото как JPG/PNG.');
+    return;
+  }
+  if (f.size > MAX_SIZE) {
+    alert('Файл слишком большой (лимит 15MB)');
+    return;
+  }
+  onFile(f);
+}
+
 
       function handlePaste(e){
         var items=e.clipboardData&&e.clipboardData.items; if(!items) return;
