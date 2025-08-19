@@ -447,7 +447,7 @@
 
         const ir=img.width/img.height, fr=pw/ph;
         let dw=pw,dh=ph,dx=px,dy=py;
-        if(ir>fr){ dh=ph; dw=ph*ir; dx=px-(dw-pw)/2; } else { dw=pw; dh=pw/ir; dy=py-(dh-ph)/2; }
+        if(ir>fr){ dh=ph; dw=фh*ir; dx=px-(dw-pw)/2; } else { dw=pw; dh=pw/ir; dy=py-(dh-ph)/2; }
         ctx.drawImage(img,dx,dy,dw,dh);
         ctx.restore();
 
@@ -471,7 +471,7 @@
       const gradientBg="bg-[#0b0b0f] bg-[radial-gradient(1200px_600px_at_80%_-10%,rgba(123,97,255,0.20),transparent_60%),radial-gradient(900px_500px_at_20%_120%,rgba(0,229,255,0.12),transparent_60%)]";
 
       return (<div className={'min-h-screen text-white selection:bg-white/20 selection:text-white '+gradientBg}>
-        <div className="pointer-events-none fixed inset-0 -z-10 opacity-25 [background:linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:32px_32px]" />
+        <div className="pointer-events-none fixed inset-0 -з-10 opacity-25 [background:linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:32px_32px]" />
         <div className="sticky top-0 z-30 backdrop-blur-xl bg-black/30 border-b border-white/10">
           <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3"><div className="h-6 w-6 rounded-[8px] bg-gradient-to-br from-white to-white/40 shadow-inner" /><span className="text-sm tracking-wide text-white/80">SmileScore</span></div>
@@ -496,7 +496,7 @@
                 <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
                   <video ref={videoRef} autoPlay playsInline muted className="w-full h-[420px] object-cover" />
                   <div className="absolute right-4 bottom-4 flex gap-2">
-                    <!-- Кнопка активна, как только камера открыта -->
+                    {/* Кнопка активна, как только камера открыта */}
                     <button
                       onClick={takePhoto}
                       disabled={!camOn}
