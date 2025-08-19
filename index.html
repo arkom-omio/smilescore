@@ -338,25 +338,44 @@ function handleFile(f){
         await acceptFile(new File([blob],'demo-smile.png',{type:'image/png'}));
       }
 
-      async function startCamera(){
-        try{
-          reset();
-          setVideoReady(false);
-          const stream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'user' } }, audio:false });
-          streamRef.current=stream;
-          const v=videoRef.current;
-          if(v){
-            v.srcObject=stream;
-            v.setAttribute('playsinline','true');
-            v.muted=true;
-            await ensureVideoReady(v);
-            setVideoReady(true);
-          }
-          setCamOn(true);
-        }catch(e){
-          alert('Не удалось открыть камеру: '+((e&&e.message)||e));
+  async function startCamera(){
+  try{
+    reset();
+    setVideoReady(false);
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal:'user' }, width: { ideal:1280 }, height: { ideal:720 } },
+      audio: false
+    });
+    streamRef.current = stream;
+
+    const v = videoRef.current;
+    if (v) {
+      // атрибуты ДО назначения потока
+      v.setAttribute('playsinline','true');
+      v.muted = true;
+      v.autoplay = true;
+      v.srcObject = stream;
+
+      // ждём готовность с таймаутом
+      try { await Promise.race([ ensureVideoReady(v, stream), new Promise((r,rej)=>setTimeout(()=>rej(new Error('timeout')), 5000)) ]); }
+      catch(_) {}
+      finally {
+        // считаем готовым, если появились размеры/readyState
+        const ok = (v.videoWidth>0 && v.readyState>=2);
+        setVideoReady(ok);
+        if (!ok) {
+          console.warn('Видео не успело инициализироваться, пробуйте ещё раз или дайте доступ камере.');
         }
       }
+    }
+
+    setCamOn(true);
+  }catch(e){
+    alert('Не удалось открыть камеру: '+((e&&e.message)||e));
+  }
+}
+
       function stopCamera(){
         const s=streamRef.current; if(s){ s.getTracks().forEach(function(t){ t.stop(); }); streamRef.current=null; }
         if(videoRef.current) videoRef.current.srcObject=null;
