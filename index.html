@@ -57,7 +57,6 @@
       const c = document.createElement('canvas'); c.width=w; c.height=h;
       const x = c.getContext('2d');
       x.drawImage(img,0,0,w,h);
-      // Конвертируем в JPEG и возвращаем dataURL
       return c.toDataURL('image/jpeg', 0.92);
     }
 
@@ -161,18 +160,40 @@
       const inputRef=useRef(null);
       const [drag,setDrag]=useState(false);
       const [focused,setFocused]=useState(false);
+
       function handleFile(f){
         if(!f) return;
-        const name=(f.name||'').toLowerCase();
-        if(!/^image\\//.test(f.type) && !/\\.(heic|heif)$/.test(name)){ alert('Можно загружать только изображения'); return; }
-        if(/\\.(heic|heif)$/.test(name)){ alert('HEIC/HEIF часто не поддерживается. Сохраните фото как JPG/PNG.'); return; }
-        if(f.size>MAX_SIZE){ alert('Файл слишком большой (лимит 15MB)'); return; }
+
+        const name = (f.name || '').toLowerCase();
+        const isImageMime = /^image\//.test(f.type);                 // ← исправлено
+        const isHeic = /\.(heic|heif)$/i.test(name);
+
+        // Принимаем только изображения (по MIME или по распространённым расширениям)
+        if (!isImageMime && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(name) && !isHeic) {
+          alert('Можно загружать только изображения (JPG/PNG/WebP/GIF/BMP)');
+          return;
+        }
+        if (isHeic) { // HEIC/HEIF часто не поддерживается
+          alert('HEIC/HEIF часто не поддерживается. Сохраните фото как JPG/PNG.');
+          return;
+        }
+        if (f.size > MAX_SIZE) {
+          alert('Файл слишком большой (лимит 15MB)');
+          return;
+        }
         onFile(f);
       }
+
       function handlePaste(e){
         var items=e.clipboardData&&e.clipboardData.items; if(!items) return;
-        for(var i=0;i<items.length;i++){ var it=items[i]; if(/^image\\//.test(it.type)){ var f=it.getAsFile(); if(f){ handleFile(f); break; } } }
+        for(var i=0;i<items.length;i++){
+          var it=items[i];
+          if (/^image\//.test(it.type)) {                              // ← исправлено
+            var f=it.getAsFile(); if(f){ handleFile(f); break; }
+          }
+        }
       }
+
       return(<div
         onDragOver={e=>{e.preventDefault(); setDrag(true);}}
         onDragLeave={()=>setDrag(false)}
@@ -199,14 +220,12 @@
 
     /* ===== Видеокамера: помощьники ===== */
     function nextVideoFrame(v){
-      // requestVideoFrameCallback (Chrome/Safari) -> иначе rAF
       return ('requestVideoFrameCallback' in v)
         ? new Promise(function(res){ v.requestVideoFrameCallback(function(){ res(); }); })
         : new Promise(function(res){ requestAnimationFrame(function(){ res(); }); });
     }
     async function ensureVideoReady(v){
       try{ await v.play(); }catch(e){}
-      // ждём несколько реальных кадров
       for(var i=0;i<3;i++) await nextVideoFrame(v);
     }
     async function captureFrameFromVideo(v){
@@ -284,7 +303,6 @@
         x.fillStyle='#3A2F2F'; x.beginPath(); x.arc(size*0.44,size*0.46,size*0.02,0,Math.PI*2); x.fill(); x.beginPath(); x.arc(size*0.56,size*0.46,size*0.02,0,Math.PI*2); x.fill();
         x.strokeStyle='#3A2F2F'; x.lineWidth=size*0.02; x.lineCap='round'; x.beginPath(); x.arc(size/2,size*0.53,size*0.12,0.15*Math.PI,0.85*Math.PI); x.stroke();
         const dataURL=c.toDataURL('image/png');
-        // Превратим в File для единообразия
         const res = await fetch(dataURL); const blob=await res.blob();
         await acceptFile(new File([blob],'demo-smile.png',{type:'image/png'}));
       }
@@ -494,7 +512,7 @@
       </div>);
     }
 
-    // sanity-check (в консоли)
+    // sanity-check
     (function(){ function within(s){ return s>=70 && s<=100; } console.assert(within(scoreFromMetrics({brightness:0.5,saturation:0.5,warmth:0.5}))); })();
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
