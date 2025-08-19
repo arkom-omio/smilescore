@@ -349,34 +349,42 @@
         await acceptFile(new File([blob],'demo-smile.png',{type:'image/png'}));
       }
 
-      async function startCamera(){
-        try{
-          reset();
-          setVideoReady(false);
+async function startCamera(){
+  try{
+    reset();
+    setVideoReady(false);
 
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode:{ ideal:'user' }, width:{ ideal:1280 }, height:{ ideal:720 } },
-            audio: false
-          });
-          streamRef.current = stream;
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal:'user' }, width:{ ideal:1280 }, height:{ ideal:720 } },
+      audio: false
+    });
+    streamRef.current = stream;
 
-          const v = videoRef.current;
-          if (v) {
-            v.setAttribute('playsinline','true');
-            v.autoplay = true;
-            v.muted = true;
-            v.srcObject = stream;
-            try { await v.play(); } catch {}
-            // прогрев в фоне, но не блокируем UI
-            warmupVideo(v, stream).catch(()=>{});
-            // через секунду считаем готовым (takePhoto допрогреет при необходимости)
-            setTimeout(()=>setVideoReady(true), 1000);
-          }
-          setCamOn(true);
-        }catch(e){
-          alert('Не удалось открыть камеру: '+((e&&e.message)||e));
-        }
-      }
+    const v = videoRef.current;
+    if (v) {
+      v.setAttribute('playsinline','true');
+      v.muted = true;
+      v.autoplay = true;
+      v.srcObject = stream;
+
+      // считаем готовым при любом из событий
+      const markReady = () => setVideoReady(true);
+      v.addEventListener('loadedmetadata', markReady, { once:true });
+      v.addEventListener('loadeddata',    markReady, { once:true });
+      v.addEventListener('playing',       markReady, { once:true });
+
+      // «прогреть» пайплайн и подождать кадр
+      try { await warmupVideo(v, stream); } catch {}
+
+      // запасной фолбэк: если браузер упрямится, просто разрешаем кнопку через 2с
+      setTimeout(() => { if (!v.videoWidth || v.readyState < 2) setVideoReady(true); }, 2000);
+    }
+
+    setCamOn(true);
+  }catch(e){
+    alert('Не удалось открыть камеру: '+((e && e.message) || e));
+  }
+}
 
       function stopCamera(){
         const s=streamRef.current; if(s){ s.getTracks().forEach(t=>t.stop()); streamRef.current=null; }
