@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// Apple-style Smile Score — single-file React component (stabilized)
-// Fixes:
-// 1) Removed HTML comments from JSX
-// 2) Fixed an accidental escape (className=\"...\") that broke parsing
-// 3) Wrapped Tailwind arbitrary value class string in a template literal to avoid parser issues
-// 4) Kept/expanded console sanity tests
+// Apple-style Smile Score — single-file React component (robust camera)
+// Основные фиксы камеры:
+// - Надёжная инициализация видео (ожидание первого кадра, rvfc/события/таймаут)
+// - Каскад съёмки: ImageCapture.takePhoto -> ImageCapture.grabFrame -> canvas
+// - Полифилл canvasToBlob (WebKit иногда даёт null)
+// - Чистое выключение камеры при размонтировании
+// + Поддержка загрузки видео (.mov/.mp4): берём кадр и конвертим в JPEG
 
 const prettyDate = () => new Date().toLocaleString();
-const MAX_SIZE = 15 * 1024 * 1024; // 15MB
+const MAX_SIZE = 15 * 1024 * 1024;           // 15MB для изображений
+const MAX_VIDEO_SIZE = 200 * 1024 * 1024;    // до 200MB для видео
 
 type Metrics = { brightness: number; saturation: number; warmth: number };
 type HistoryItem = { url: string; score: number; verdict: string; date: string };
@@ -37,7 +39,6 @@ function useImageData(url: string | null) {
           const imageData = ctx.getImageData(0, 0, w, h);
           setData(imageData);
         } catch {
-          // If canvas is tainted or getImageData fails, mark as null — we'll fall back later
           setData(null);
         }
       };
@@ -51,7 +52,6 @@ function useImageData(url: string | null) {
 
 function analyzeJoy(imageData: ImageData | null): Metrics {
   if (!imageData) {
-    // Safe defaults so the app always works and stays positive
     return { brightness: 0.6, saturation: 0.4, warmth: 0.5 };
   }
   const { data, width, height } = imageData;
@@ -144,16 +144,121 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   );
 }
 
+// ---------- Helpers ----------
+async function fileToDataURL(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result));
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+
+// WebKit-safe canvasToBlob
+async function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type: string = "image/jpeg",
+  quality = 0.92
+): Promise<Blob> {
+  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, type, quality));
+  if (blob) return blob;
+  const dataURL = canvas.toDataURL(type, quality);
+  const bin = atob(dataURL.split(",")[1]);
+  const buf = new ArrayBuffer(bin.length);
+  const arr = new Uint8Array(buf);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([buf], { type });
+}
+
+// Из видеофайла делаем JPEG-кадр
+async function videoFileToImageFile(file: File): Promise<File> {
+  const url = URL.createObjectURL(file);
+  try {
+    const video = document.createElement("video");
+    // @ts-ignore
+    video.playsInline = true;
+    video.muted = true;
+    video.preload = "metadata";
+    video.src = url;
+
+    await new Promise<void>((resolve, reject) => {
+      const onLoaded = () => resolve();
+      const onError = () => reject(new Error("Не удалось прочитать видео"));
+      video.addEventListener("loadeddata", onLoaded, { once: true });
+      video.addEventListener("error", onError, { once: true });
+    });
+
+    // чутка пролистнём для чёткого кадра
+    try {
+      if (!Number.isNaN(video.duration)) {
+        video.currentTime = Math.min(0.2, Math.max(0, video.duration / 10));
+        await new Promise<void>((r) => video.addEventListener("seeked", () => r(), { once: true }));
+      }
+    } catch {}
+
+    const w = video.videoWidth || 640;
+    const h = video.videoHeight || 480;
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d"); if (!ctx) throw new Error("Canvas 2D недоступен");
+    ctx.drawImage(video, 0, 0, w, h);
+
+    const blob = await canvasToBlob(canvas, "image/jpeg", 0.92);
+    return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// Ждём первый реальный кадр видео (Chrome/Edge/Safari-friendly)
+function waitForFirstFrame(v: HTMLVideoElement, timeout = 4000): Promise<void> {
+  return new Promise((resolve) => {
+    if ((v.videoWidth ?? 0) > 0 && v.readyState >= 2) return resolve();
+    let done = false;
+    const finish = () => { if (!done) { done = true; cleanup(); resolve(); } };
+    const onFrameish = () => { if ((v.videoWidth ?? 0) > 0) finish(); };
+    const events = ["loadedmetadata", "loadeddata", "canplay", "playing", "resize", "timeupdate"];
+    const cleanup = () => {
+      events.forEach(e => v.removeEventListener(e, onFrameish));
+      if ((v as any).__rvfcId && (v as any).cancelVideoFrameCallback) {
+        (v as any).cancelVideoFrameCallback((v as any).__rvfcId);
+      }
+      clearTimeout(tid);
+    };
+    events.forEach(e => v.addEventListener(e, onFrameish));
+    if ((v as any).requestVideoFrameCallback) {
+      (v as any).__rvfcId = (v as any).requestVideoFrameCallback(() => finish());
+    }
+    const tid = setTimeout(finish, timeout);
+  });
+}
+
+// ---------- UI ----------
 function DropZone({ onFile }: { onFile: (file: File) => void }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [drag, setDrag] = useState(false);
   const [focused, setFocused] = useState(false);
 
-  const handleFile = (f?: File | null) => {
+  const handleFile = async (f?: File | null) => {
     if (!f) return;
-    if (!f.type.startsWith("image/")) { alert("Можно загружать только изображения"); return; }
-    if (f.size > MAX_SIZE) { alert("Файл слишком большой (лимит 15MB)"); return; }
-    onFile(f);
+
+    if (f.type.startsWith("image/")) {
+      if (f.size > MAX_SIZE) { alert("Файл слишком большой (лимит 15MB)"); return; }
+      onFile(f);
+      return;
+    }
+    if (f.type.startsWith("video/")) {
+      if (f.size > MAX_VIDEO_SIZE) { alert("Видео слишком большое (лимит ~200MB)"); return; }
+      try {
+        const imgFromVideo = await videoFileToImageFile(f);
+        onFile(imgFromVideo);
+      } catch (e) {
+        alert("Не удалось извлечь кадр из видео: " + ((e as any)?.message || e));
+      }
+      return;
+    }
+
+    alert("Поддерживаются изображения и видео");
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
@@ -175,7 +280,7 @@ function DropZone({ onFile }: { onFile: (file: File) => void }) {
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       role="button"
-      aria-label="Загрузить фотографию (можно вставить Ctrl/Cmd+V)"
+      aria-label="Загрузить фото или видео (можно вставить Ctrl/Cmd+V)"
       className={[
         "group relative flex flex-col items-center justify-center",
         "h-[280px] rounded-3xl border-2 border-dashed",
@@ -193,43 +298,17 @@ function DropZone({ onFile }: { onFile: (file: File) => void }) {
           <rect x="3" y="12" width="18" height="8" rx="2" stroke="currentColor" strokeWidth="1.5"/>
         </svg>
       </div>
-      <div className="text-xl md:text-2xl font-semibold text-white/90">Перетащите фото сюда</div>
-      <div className="mt-2 text-white/60">или нажмите, чтобы выбрать файл · Ctrl/Cmd+V — вставить</div>
+      <div className="text-xl md:text-2xl font-semibold text-white/90">Перетащите фото/видео сюда</div>
+      <div className="mt-2 text-white/60">или нажмите, чтобы выбрать файл · Ctrl/Cmd+V — вставить фото</div>
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,video/*"
         className="hidden"
         onChange={(e) => handleFile(e.currentTarget.files?.[0])}
       />
     </div>
   );
-}
-
-// Helpers
-async function fileToDataURL(file: File): Promise<string> {
-  return await new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(String(fr.result));
-    fr.onerror = reject;
-    fr.readAsDataURL(file);
-  });
-}
-
-// NEW: robust canvasToBlob (with dataURL fallback for WebKit oddities)
-async function canvasToBlob(
-  canvas: HTMLCanvasElement,
-  type: string = "image/jpeg",
-  quality = 0.92
-): Promise<Blob> {
-  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, type, quality));
-  if (blob) return blob;
-  const dataURL = canvas.toDataURL(type, quality);
-  const bin = atob(dataURL.split(",")[1]);
-  const buf = new ArrayBuffer(bin.length);
-  const arr = new Uint8Array(buf);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return new Blob([buf], { type });
 }
 
 export default function App() {
@@ -245,6 +324,7 @@ export default function App() {
   // Camera
   const [camOn, setCamOn] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const [camError, setCamError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -259,15 +339,11 @@ export default function App() {
 
   useEffect(() => {
     if (!imgURL) { setMetrics(null); setScore(null); return; }
-    // When imageData resolves (or fails), compute metrics (or defaults)
     const m = analyzeJoy(imageData);
     setMetrics(m);
     setScore(null);
   }, [imgURL, imageData]);
 
-  const positiveScore = useMemo(() => metrics ? scoreFromMetrics(metrics) : null, [metrics]);
-
-  // Auto analyze once metrics are ready — track busy & score to avoid stale re-triggers
   useEffect(() => {
     if (!autoAnalyze || !imgURL || !metrics) return;
     if (score != null || busy) return;
@@ -277,12 +353,9 @@ export default function App() {
   async function handleAnalyze() {
     if (!imgURL) { setToast("Сначала загрузите фото"); return; }
     setBusy(true);
-
-    // Use current metrics if available, otherwise compute with fallback defaults
     let m: Metrics = metrics ?? analyzeJoy(imageData);
     if (!m) m = analyzeJoy(null);
-    if (!metrics) setMetrics(m); // cache what we used
-
+    if (!metrics) setMetrics(m);
     await new Promise((r) => setTimeout(r, 320));
     const s = scoreFromMetrics(m);
     setScore(s);
@@ -312,14 +385,15 @@ export default function App() {
 
   // ---- Camera helpers ----
   async function startCamera() {
+    setCamError(null);
     try {
       if (!("mediaDevices" in navigator) || !navigator.mediaDevices.getUserMedia) {
-        alert("Браузер не поддерживает камеру. Откройте приложение в современном браузере по HTTPS.");
+        setCamError("Браузер не поддерживает камеру или нужен HTTPS.");
         return;
       }
 
       reset();
-      setCamOn(true);          // показываем UI сразу
+      setCamOn(true);
       setVideoReady(false);
 
       const constraints: MediaStreamConstraints = {
@@ -334,32 +408,18 @@ export default function App() {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      const v = videoRef.current;
-      if (v) {
-        v.srcObject = stream as any;
-        v.setAttribute("playsinline", "true");
-        v.muted = true;
+      const v = videoRef.current!;
+      v.srcObject = stream as any;
+      v.setAttribute("playsinline", "true");
+      v.muted = true;
 
-        try { await v.play(); } catch { /* на iOS может потребоваться пользовательский жест */ }
+      try { await v.play(); } catch {} // иногда требует повторного жеста
 
-        await new Promise<void>((resolve) => {
-          const onReady = () => {
-            setVideoReady(true);
-            cleanup();
-            resolve();
-          };
-          const cleanup = () => {
-            v.removeEventListener("loadedmetadata", onReady);
-            v.removeEventListener("canplay", onReady);
-          };
-          v.addEventListener("loadedmetadata", onReady);
-          v.addEventListener("canplay", onReady);
-          // Запасной таймаут: некоторые WebKit не шлют события
-          setTimeout(() => { if (v.videoWidth > 0) onReady(); }, 1200);
-        });
-      }
+      await waitForFirstFrame(v, 4000);
+      setVideoReady(true);
     } catch (e) {
-      alert("Не удалось открыть камеру: " + ((e as any)?.message || e));
+      const msg = (e as any)?.message || String(e);
+      setCamError("Не удалось открыть камеру: " + msg);
       setCamOn(false);
       setVideoReady(false);
     }
@@ -376,96 +436,83 @@ export default function App() {
     const v = videoRef.current;
     if (!v) return;
 
-    // Убедимся, что видео готово
-    if (v.readyState < 2) {
-      try { await v.play(); } catch {}
-      await new Promise((r) => setTimeout(r, 180));
-    }
+    // Дождёмся первого реального кадра
+    await waitForFirstFrame(v, 3000);
 
     const track = streamRef.current?.getVideoTracks?.()[0];
-    const anyWindow = window as any;
+    const W: any = window as any;
 
-    // (1) Попытка через ImageCapture.takePhoto()
-    if (track && anyWindow?.ImageCapture) {
+    // 1) ImageCapture.takePhoto
+    if (track && W.ImageCapture) {
       try {
-        const cap = new anyWindow.ImageCapture(track);
+        const cap = new W.ImageCapture(track);
         if (cap.takePhoto) {
           const blob: Blob = await cap.takePhoto();
           setFile(new File([blob], "camera-shot.jpg", { type: blob.type || "image/jpeg" }));
           stopCamera();
           return;
         }
-      } catch {
-        // пойдём дальше
-      }
-
-      // (2) Попытка через ImageCapture.grabFrame()
+      } catch { /* пойдём дальше */ }
+      // 2) ImageCapture.grabFrame
       try {
-        const cap = new anyWindow.ImageCapture(track);
+        const cap = new W.ImageCapture(track);
         if (cap.grabFrame) {
           const bmp: ImageBitmap = await cap.grabFrame();
           const canvas = document.createElement("canvas");
-          canvas.width = bmp.width;
-          canvas.height = bmp.height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return;
-          // Если превью зеркалится CSS-классом, здесь можно "раззеркалить" кадр:
-          // ctx.save(); ctx.scale(-1, 1); ctx.drawImage(bmp, -bmp.width, 0); ctx.restore();
+          canvas.width = bmp.width; canvas.height = bmp.height;
+          const ctx = canvas.getContext("2d"); if (!ctx) return;
           ctx.drawImage(bmp, 0, 0);
-          bmp.close();
+          // @ts-ignore
+          if (bmp.close) bmp.close();
           const blob = await canvasToBlob(canvas, "image/jpeg", 0.92);
           setFile(new File([blob], "camera-shot.jpg", { type: "image/jpeg" }));
           stopCamera();
           return;
         }
-      } catch {
-        // фолбэк на канвас ниже
-      }
+      } catch { /* пойдём на канвас */ }
     }
 
-    // (3) Универсальный фолбэк: кадр из <video> на canvas
-    const w = v.videoWidth || 640;
-    const h = v.videoHeight || 480;
+    // 3) Фолбэк: рисуем текущий кадр
+    const w = v.videoWidth || 640, h = v.videoHeight || 480;
     const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    // Если хотите зеркальное фото как в превью фронталки — оставьте так:
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
     ctx.drawImage(v, 0, 0, w, h);
-    // Если нужно раззеркалить (когда превью зеркалится), используйте:
-    // ctx.save(); ctx.scale(-1, 1); ctx.drawImage(v, -w, 0, w, h); ctx.restore();
-
     const blob = await canvasToBlob(canvas, "image/jpeg", 0.92);
     setFile(new File([blob], "camera-shot.jpg", { type: "image/jpeg" }));
     stopCamera();
   }
 
-  // Чистое выключение камеры при размонтировании
+  // Чистое выключение камеры при размонтировании/уходе
   useEffect(() => {
-    return () => { try { stopCamera(); } catch {} };
+    const beforeUnload = () => stopCamera();
+    window.addEventListener("pagehide", beforeUnload);
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => {
+      window.removeEventListener("pagehide", beforeUnload);
+      window.removeEventListener("beforeunload", beforeUnload);
+      try { stopCamera(); } catch {}
+    };
   }, []);
 
   // ---- Export to PNG (share card) ----
   async function exportPNG() {
     if (!score || !imgURL) return;
-    const W = 1080, H = 1350; const canvas = document.createElement("canvas"); canvas.width = W; canvas.height = H; const ctx = canvas.getContext("2d"); if (!ctx) return;
-    const bg = ctx.createLinearGradient(0, 0, W, H); bg.addColorStop(0, "#0b0b0f"); bg.addColorStop(1, "#1a1b22"); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-    const rg = ctx.createRadialGradient(W*0.8, H*0.1, 0, W*0.8, H*0.1, W*0.6); rg.addColorStop(0, "rgba(123,97,255,0.35)"); rg.addColorStop(1, "transparent"); ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+    const Wc = 1080, Hc = 1350; const canvas = document.createElement("canvas"); canvas.width = Wc; canvas.height = Hc; const ctx = canvas.getContext("2d"); if (!ctx) return;
+    const bg = ctx.createLinearGradient(0, 0, Wc, Hc); bg.addColorStop(0, "#0b0b0f"); bg.addColorStop(1, "#1a1b22"); ctx.fillStyle = bg; ctx.fillRect(0, 0, Wc, Hc);
+    const rg = ctx.createRadialGradient(Wc*0.8, Hc*0.1, 0, Wc*0.8, Hc*0.1, Wc*0.6); rg.addColorStop(0, "rgba(123,97,255,0.35)"); rg.addColorStop(1, "transparent"); ctx.fillStyle = rg; ctx.fillRect(0, 0, Wc, Hc);
     const img = await new Promise<HTMLImageElement>((resolve, reject) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => resolve(im); im.onerror = reject; im.src = imgURL; });
-    const px = 90, py = 140, pw = W - 180, ph = 620, r = 36; ctx.save(); ctx.beginPath(); ctx.moveTo(px + r, py); ctx.arcTo(px + pw, py, px + pw, py + ph, r); ctx.arcTo(px + pw, py + ph, px, py + ph, r); ctx.arcTo(px, py + ph, px, py, r); ctx.arcTo(px, py, px + pw, py, r); ctx.closePath(); ctx.clip();
+    const px = 90, py = 140, pw = Wc - 180, ph = 620, r = 36; ctx.save(); ctx.beginPath(); ctx.moveTo(px + r, py); ctx.arcTo(px + pw, py, px + pw, py + ph, r); ctx.arcTo(px + pw, py + ph, px, py + ph, r); ctx.arcTo(px, py + ph, px, py, r); ctx.arcTo(px, py, px + pw, py, r); ctx.closePath(); ctx.clip();
     const imgRatio = img.width / img.height; const frameRatio = pw / ph; let dw = pw, dh = ph, dx = px, dy = py; if (imgRatio > frameRatio) { dh = ph; dw = ph * imgRatio; dx = px - (dw - pw) / 2; dy = py; } else { dw = pw; dh = pw / imgRatio; dx = px; dy = py - (dh - ph) / 2; }
     ctx.drawImage(img, dx, dy, dw, dh); ctx.restore();
     ctx.fillStyle = "white"; ctx.font = "600 68px system-ui, -apple-system, Segoe UI, Roboto"; ctx.fillText("SmileScore", 90, 980);
-    const cx = 260, cy = 1120, rr = 120, sw = 18; ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.lineWidth = sw; ctx.lineCap = "round"; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI*2); ctx.stroke(); const grad = ctx.createLinearGradient(cx-rr, cy-rr, cx+rr, cy+rr); grad.addColorStop(0, "#00E5FF"); grad.addColorStop(0.5, "#00FFA3"); grad.addColorStop(1, "#7B61FF"); ctx.strokeStyle = grad; const end = (-Math.PI/2) + (Math.PI*2) * (score/100); ctx.beginPath(); ctx.arc(cx, cy, rr, -Math.PI/2, end); ctx.stroke();
+    const cx = 260, cy = 1120, rr = 120; ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.lineWidth = 18; ctx.lineCap = "round"; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI*2); ctx.stroke(); const grad = ctx.createLinearGradient(cx-rr, cy-rr, cx+rr, cy+rr); grad.addColorStop(0, "#00E5FF"); grad.addColorStop(0.5, "#00FFA3"); grad.addColorStop(1, "#7B61FF"); ctx.strokeStyle = grad; const end = (-Math.PI/2) + (Math.PI*2) * (score/100); ctx.beginPath(); ctx.arc(cx, cy, rr, -Math.PI/2, end); ctx.stroke();
     ctx.textAlign = "center"; ctx.font = "600 64px system-ui, -apple-system, Segoe UI, Roboto"; ctx.fillText(String(score), cx, cy + 24); ctx.textAlign = "left";
     ctx.font = "600 48px system-ui, -apple-system, Segoe UI, Roboto"; ctx.fillText(verdict(score), 430, 1100); ctx.font = "32px system-ui, -apple-system, Segoe UI, Roboto"; ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.fillText("Дата оценки: " + prettyDate(), 430, 1150);
     const blob: Blob | null = await new Promise((res) => canvas.toBlob((b) => res(b), "image/png")); if (!blob) return; const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "SmileScore.png"; a.click(); URL.revokeObjectURL(url);
     if (navigator.share) { try { await navigator.share({ title: "SmileScore", text: verdict(score), url }); } catch {} }
   }
 
-  // Template literal to avoid parser oddities with square brackets
   const gradientBg = `bg-[#0b0b0f] bg-[radial-gradient(1200px_600px_at_80%_-10%,rgba(123,97,255,0.20),transparent_60%),radial-gradient(900px_500px_at_20%_120%,rgba(0,229,255,0.12),transparent_60%)]`;
 
   return (
@@ -484,7 +531,7 @@ export default function App() {
 
       <main className="mx-auto max-w-6xl px-4 py-10 md:py-16">
         <div className="max-w-3xl">
-          <motion.h1 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="text-4xl md:text-6xl font-semibold tracking-tight bg-gradient-to-br from-white to-white/70 bg-clip-text text-transparent">
+          <motion.h1 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="text-4xl md:text-6xl font-semibold tracking-tight bg-gradient-to-br from белого to-white/70 bg-clip-text text-transparent">
             Оценка улыбки <span className="text-white/50">по фото</span>
           </motion.h1>
           <p className="mt-4 text-white/70 text-lg md:text-xl">Загрузите портрет — и получите бережную, вдохновляющую оценку. Только позитивные вибрации ✌️</p>
@@ -496,15 +543,23 @@ export default function App() {
             {camOn ? (
               <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
                 <video ref={videoRef} autoPlay playsInline muted className="w-full h-[420px] object-cover" />
+                {!videoReady && (
+                  <div className="absolute inset-0 grid place-items-center text-white/60 text-sm">Камера инициализируется…</div>
+                )}
+                {camError && (
+                  <div className="absolute left-4 top-4 rounded-xl bg-red-500/20 px-3 py-2 text-xs">{camError}</div>
+                )}
                 <div className="absolute right-4 bottom-4 flex gap-2">
-                  <button onClick={takePhoto} disabled={!videoReady} className="rounded-xl bg-white text-black px-3 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed">{videoReady ? 'Сфотографировать' : 'Камера инициализируется…'}</button>
+                  <button onClick={takePhoto} disabled={!videoReady} className="rounded-xl bg-white text-black px-3 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed">
+                    {videoReady ? "Сфотографировать" : "Ждём кадр…"}
+                  </button>
                   <button onClick={stopCamera} className="rounded-xl bg-white/10 hover:bg-white/20 px-3 py-2 text-sm">Закрыть</button>
                 </div>
               </div>
             ) : !imgURL ? (
               <DropZone onFile={setFile} />
             ) : (
-              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
+              <div className="relative overflow-hidden rounded-3xl border border белого/10 bg-white/[0.03] backdrop-blur-xl">
                 <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(600px_240px_at_10%_10%,rgba(255,255,255,0.06),transparent)]" />
                 <img src={imgURL ?? ''} alt="Предпросмотр" className="w-full h-[420px] object-cover" />
                 <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-2xl bg-black/40 px-3 py-1.5 backdrop-blur">
@@ -528,7 +583,6 @@ export default function App() {
               </label>
             </div>
 
-            {/* History */}
             {history.length > 0 && (
               <div className="mt-2">
                 <div className="mb-2 text-white/60 text-sm">История</div>
@@ -543,7 +597,6 @@ export default function App() {
                 </div>
               </div>
             )}
-
           </div>
 
           {/* Right: results */}
@@ -577,7 +630,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="mt-10 text-center text-white/50 text-sm">Создано с заботой. Это развлекательная оценка и всегда позитивная. Улыбнитесь сегодня кому-нибудь 😊</div>
       </main>
 
@@ -603,7 +655,6 @@ function Metric({ label, value }: { label: string; value: number }) {
 
 // --- Dev sanity tests (console only) ---
 if (typeof window !== "undefined") {
-  // run once per session
   // @ts-ignore
   if (!(window as any).__smile_tests_ran__) {
     // @ts-ignore
@@ -616,10 +667,8 @@ if (typeof window !== "undefined") {
     const s2 = scoreFromMetrics({ brightness: 0.8, saturation: 0.8, warmth: 0.8 });
     console.assert(s1 >= 70 && s2 >= s1, "Higher metrics should not reduce score");
     console.assert(typeof verdict(80) === "string" && verdict(80).length > 0, "Verdict should be a non-empty string");
-    // New: fallback path must still yield a valid score
     const fallbackScore = scoreFromMetrics(analyzeJoy(null as any));
     console.assert(within(fallbackScore), "Fallback scoring (no imageData) should be valid");
-    // Check gradient class string is intact
     const hasArbitrary = /bg-\[/.test((document.querySelector('[class*="bg-\["]')?.getAttribute('class')||''));
     console.assert(typeof hasArbitrary === 'boolean', 'Arbitrary class presence check executed');
   }
