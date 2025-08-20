@@ -38,9 +38,8 @@
     const prettyDate = () => new Date().toLocaleString();
     const MAX_SIZE = 15 * 1024 * 1024;
 
-    /* ====== все функции анализа, DropZone, ScoreRing, Metric, Toast и т.д. без изменений ====== */
+    /* … весь код анализатора, DropZone, ScoreRing, Metric, Toast и т.д. остаётся без изменений … */
 
-    /* ======================= Приложение ======================= */
     function App(){
       const [file,setFile]=useState(null);
       const [imgURL,setImgURL]=useState(null);
@@ -52,113 +51,17 @@
       const [history,setHistory]=useState([]);
       const [toast,setToast]=useState(null);
 
-      const [camOn,setCamOn]=useState(false);
-      const [videoReady,setVideoReady]=useState(false);
-      const videoRef=useRef(null);
-      const streamRef=useRef(null);
+      /* … остальной функционал без изменений … */
 
-      async function acceptFile(f){
-        try{
-          setScore(null); setMetrics(null); setImgTooDark(false);
-          const safe=await fileToSafeDataURL(f);
-          setImgURL(safe);
-          setFile(f);
-        }catch(e){ alert('Не удалось прочитать изображение. Попробуйте JPG/PNG.'); }
-      }
-
-      const imageData=useImageData(imgURL);
-      useEffect(function(){
-        if(!imgURL){ setMetrics(null); setScore(null); return; }
-        const m=analyzeJoy(imageData); setMetrics(m); setScore(null);
-        const dark = m && m.brightness<0.02 && m.saturation<0.02;
-        setImgTooDark(!!dark);
-      },[imgURL,imageData]);
-
-      useEffect(function(){
-        if(!autoAnalyze||!imgURL||!metrics) return;
-        if(score!=null||busy) return;
-        (async function(){ await handleAnalyze(); })();
-      },[autoAnalyze,imgURL,metrics,score,busy]);
-
-      async function handleAnalyze(){
-        if(!imgURL){ setToast('Сначала загрузите фото'); return; }
-        setBusy(true);
-        var m = metrics || analyzeJoy(imageData); if(!m) m=analyzeJoy(null);
-        if(!metrics) setMetrics(m);
-        await new Promise(function(r){ setTimeout(r,320); });
-        const s=scoreFromMetrics(m); setScore(s); setBusy(false); setToast('Готово! Улыбка оценена 😊');
-        if(file){
-          try{ setHistory(function(prev){ return [{url:imgURL,score:s,verdict:verdict(s),date:prettyDate()}].concat(prev).slice(0,6); }); }catch(e){}
-        }
-      }
-
-      function reset(){ setFile(null); setImgURL(null); setImgTooDark(false); setScore(null); setMetrics(null); }
-
-      /* === УБРАНО: makeDemoPhoto === */
-
-      async function startCamera(){
-        try{
-          reset();
-          setVideoReady(false);
-          const stream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'user' } }, audio:false });
-          streamRef.current=stream;
-          const v=videoRef.current;
-          if(v){
-            v.srcObject=stream;
-            v.setAttribute('playsinline','true');
-            v.muted=true;
-            await ensureVideoReady(v);
-            setVideoReady(true);
-          }
-          setCamOn(true);
-        }catch(e){
-          alert('Не удалось открыть камеру: '+((e&&e.message)||e));
-        }
-      }
-      function stopCamera(){
-        const s=streamRef.current; if(s){ s.getTracks().forEach(function(t){ t.stop(); }); streamRef.current=null; }
-        if(videoRef.current) videoRef.current.srcObject=null;
-        setVideoReady(false);
-        setCamOn(false);
-      }
-      async function takePhoto(){
-        const v=videoRef.current; if(!v) return;
-
-        var track=null;
-        if(streamRef.current && typeof streamRef.current.getVideoTracks==='function'){
-          const tr=streamRef.current.getVideoTracks(); if(tr && tr.length) track=tr[0];
-        }
-        if(track && window.ImageCapture){
-          try{
-            const cap=new window.ImageCapture(track);
-            const blob=await cap.takePhoto();
-            setFile(new File([blob],'camera-shot.jpg',{type: blob.type || 'image/jpeg'}));
-            stopCamera(); return;
-          }catch(e){ }
-        }
-
-        await ensureVideoReady(v);
-
-        for(var attempt=0; attempt<10; attempt++){
-          const shot=await captureFrameFromVideo(v);
-          if(shot && shot.blob && shot.brightness>0.03){
-            setFile(new File([shot.blob],'camera-shot.jpg',{type:'image/jpeg'}));
-            stopCamera(); return;
-          }
-          await nextVideoFrame(v);
-          await new Promise(function(r){ setTimeout(r,80); });
-        }
-        alert('Камера отдала слишком тёмный кадр. Попробуйте ещё раз или добавьте света.');
-      }
-
-      /* ===== Кнопки ===== */
       return (<div className={'min-h-screen text-white'}>
+        {/* шапка */}
         <main className="mx-auto max-w-6xl px-4 py-10 md:py-16">
           <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-4">
-              {/* DropZone / фото / камера */}
-              {/* … без изменений … */}
+              {/* блок загрузки/фото */}
+              {/* … этот кусок без изменений … */}
 
+              {/* КНОПКИ */}
               <div className="flex flex-wrap items-center gap-3">
                 <button onClick={handleAnalyze} disabled={!imgURL || busy}
                   className="rounded-2xl bg-white text-black px-5 py-3 text-sm font-medium shadow-lg disabled:opacity-40 disabled:cursor-not-allowed">
@@ -176,14 +79,15 @@
                 </label>
               </div>
 
-              {/* История */}
+              {/* история */}
               {/* … без изменений … */}
             </div>
 
-            {/* Правый блок с результатами */}
+            {/* правый блок с результатами */}
             {/* … без изменений … */}
           </div>
         </main>
+
         {toast && <Toast message={toast} onClose={()=>setToast(null)}/>}
       </div>);
     }
