@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SmileScore — оценка улыбки</title>
-    <meta name="description" content="Локальное веб‑приложение: позитивная оценка улыбки по фото. Ничего не отправляется на сервер." />
+    <meta name="description" content="Локальное веб-приложение: позитивная оценка улыбки по фото. Ничего не отправляется на сервер." />
     <meta name="theme-color" content="#f6f6f6" />
     <link rel="icon" href="./brand-logo.svg" type="image/svg+xml" />
 
@@ -115,11 +115,31 @@
         }
         return {brightness:sb/n, saturation:ss/n, warmth:sw/n};
       }
-      function scoreFromMetrics(m){
-        const joy=0.5*m.brightness+0.3*m.saturation+0.2*m.warmth;
-        const raw=Math.max(0.4, Math.min(1, joy + Math.random()*0.08));
-        return Math.max(70, Math.min(100, Math.round(70 + raw*30)));
+
+      /* === надёжный рандом === */
+      function rand(){
+        try{ const a=new Uint32Array(1); crypto.getRandomValues(a); return a[0]/4294967296; }
+        catch(_){ return Math.random(); }
       }
+
+      /* === итоговый счёт с «живым» разбросом === */
+      function scoreFromMetrics(m){
+        // базовый индекс «радости»
+        const base = 0.5*m.brightness + 0.3*m.saturation + 0.2*m.warmth;
+
+        // мягкий симметричный разброс по индексу: ±0.07
+        const jitter = (rand() - 0.5) * 0.14;
+
+        // ограничиваем 0.4..1.0, затем маппим в 70..100
+        let raw = Math.max(0.4, Math.min(1, base + jitter));
+        let score = Math.round(70 + raw * 30);
+
+        // ещё микро-джиттер по целым баллам: ±3
+        score += Math.round((rand() - 0.5) * 6);
+
+        return Math.max(70, Math.min(100, score));
+      }
+
       function verdict(s){
         if(s>=95) return "Ослепительная улыбка ✨";
         if(s>=90) return "Вау! Улыбка как у кинозвезды";
@@ -357,7 +377,7 @@
                       {busy?'Анализ…':'Оценить улыбку'}
                     </button>
                     <label className="flex items-center gap-2 text-[#1b2d6f]/80 text-sm select-none">
-                      <input type="checkbox" checked={autoAnalyze} onChange={e=>setAutoAnalyze(e.currentTarget.checked)} className="accent-[#10afab]"/> Авто‑оценка после загрузки
+                      <input type="checkbox" checked={autoAnalyze} onChange={e=>setAutoAnalyze(e.currentTarget.checked)} className="accent-[#10afab]"/> Авто-оценка после загрузки
                     </label>
                   </div>
 
@@ -378,7 +398,7 @@
 
                 <div className="relative overflow-hidden rounded-3xl border border-[#1b2d6f]/10 bg-white p-6 md:p-8 shadow-sm">
                   <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(500px_200px_at_85%_15%,rgba(27,45,111,0.07),transparent)]"/>
-                  <div className="flex flex-col items-center justify-center min-h-[420px] text-center">
+                  <div className="flex flex-col items-center justify-center min-х-[420px] text-center">
                     <AnimatePresence mode="wait">
                       {score==null ? (
                         <motion.div key="empty" initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:0.4}} className="text-[#1b2d6f]/70">
@@ -404,7 +424,7 @@
                 </div>
               </div>
 
-              <div className="mt-10 text-center text-[#1b2d6f]/60 text-sm">Создано с заботой. Это развлекательная оценка и всегда позитивная. Улыбнитесь сегодня кому‑нибудь 😊</div>
+              <div className="mt-10 text-center text-[#1b2d6f]/60 text-sm">Создано с заботой. Это развлекательная оценка и всегда позитивная. Улыбнитесь сегодня кому-нибудь 😊</div>
             </main>
 
             {toast && <Toast message={toast} onClose={()=>setToast(null)}/>}
