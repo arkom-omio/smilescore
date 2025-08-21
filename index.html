@@ -6,6 +6,7 @@
     <title>SmileScore — оценка улыбки</title>
     <meta name="description" content="Локальное веб‑приложение: позитивная оценка улыбки по фото. Ничего не отправляется на сервер." />
     <meta name="theme-color" content="#f6f6f6" />
+    <link rel="icon" href="./brand-logo.svg" type="image/svg+xml" />
 
     <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -307,7 +308,11 @@
 
             <div className="sticky top-0 z-30 backdrop-blur-xl bg-white/70 border-b border-[#1b2d6f]/10">
               <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-3"><div className="h-6 w-6 rounded-[8px] bg-gradient-to-br from-[#1b2d6f] to-[#10afab] shadow-inner" /><span className="text-sm tracking-wide text-[#1b2d6f]/80">SmileScore</span></div>
+                <div className="flex items-center gap-3">
+                  <img src="./brand-logo.svg" alt="Логотип" className="h-7 w-auto rounded-md" draggable="false"
+                       onError={(e)=>{ e.currentTarget.onerror=null; e.currentTarget.src='./brand-logo.png'; }} />
+                  <span className="text-sm tracking-wide text-[#1b2d6f]/80">SmileScore</span>
+                </div>
                 <div className="text-xs text-[#1b2d6f]/60">{prettyDate()}</div>
               </div>
             </div>
