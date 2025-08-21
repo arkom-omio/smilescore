@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SmileScore — оценка улыбки</title>
     <meta name="description" content="Локальное веб‑приложение: позитивная оценка улыбки по фото. Ничего не отправляется на сервер." />
+    <meta name="theme-color" content="#f6f6f6" />
 
     <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
       html, body, #root { height:100% }
-      body { background:#0b0b0f }
+      body { background:#f6f6f6 }
       #err { position:fixed; inset:0; display:none; background:rgba(0,0,0,.92); color:#fff; padding:16px; z-index:99999; white-space:pre-wrap }
     </style>
   </head>
@@ -48,7 +49,7 @@
       /* ================================================================= */
 
       const { useEffect, useRef, useState } = React;
-      const prettyDate = () => new Date().toLocaleString();
+      const prettyDate = () => new Date().toLocaleString('ru-RU');
       const MAX_SIZE = 15 * 1024 * 1024;
 
       /* ===== Нормализация файла в безопасный dataURL (JPEG sRGB) ===== */
@@ -65,6 +66,7 @@
         const h = Math.max(1, Math.round(img.height*scale));
         const c = document.createElement('canvas'); c.width=w; c.height=h;
         const x = c.getContext('2d');
+        x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
         x.drawImage(img,0,0,w,h);
         return c.toDataURL('image/jpeg', 0.92);
       }
@@ -83,6 +85,7 @@
               const w=Math.max(1,Math.round(img.width*sc)), h=Math.max(1,Math.round(img.height*sc));
               const c=document.createElement('canvas'); c.width=w; c.height=h;
               const x=c.getContext('2d'); if(!x){ setData(null); return; }
+              x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
               x.drawImage(img,0,0,w,h);
               try{ setData(x.getImageData(0,0,w,h)); }catch(e){ setData(null); }
             };
@@ -136,32 +139,37 @@
       }
       function ScoreRing({score}){
         const R=84, SW=12, C=2*Math.PI*R, pct=score/100, dash=C*pct, gap=C-dash, d=useCountUp(score);
-        return (<div className="relative w-[220px] h-[220px]">
-          <svg viewBox={`0 0 ${2*(R+SW)} ${2*(R+SW)}`} className="w-full h-full">
-            <defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop offset="0%" stopColor="#00E5FF"/><stop offset="50%" stopColor="#00FFA3"/><stop offset="100%" stopColor="#7B61FF"/></linearGradient></defs>
+        return (<div className="relative w-[220px] h-[220px]" aria-label={`Счёт ${score} из 100`} role="img">
+          <svg viewBox={`0 0 ${2*(R+SW)} ${2*(R+SW)}`} className="w-full h-full" aria-hidden="true">
+            <defs>
+              <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stopColor="#1b2d6f"/>
+                <stop offset="100%" stopColor="#10afab"/>
+              </linearGradient>
+            </defs>
             <g transform={`translate(${SW},${SW})`}>
-              <circle cx={R} cy={R} r={R} stroke="rgba(255,255,255,0.15)" strokeWidth={SW} fill="none"/>
+              <circle cx={R} cy={R} r={R} stroke="rgba(27,45,111,0.18)" strokeWidth={SW} fill="none"/>
               <circle cx={R} cy={R} r={R} stroke="url(#g)" strokeWidth={SW} fill="none" strokeLinecap="round" strokeDasharray={`${dash} ${gap}`} transform={`rotate(-90 ${R} ${R})`}/>
             </g>
           </svg>
           <div className="absolute inset-0 grid place-items-center">
-            <div className="text-center"><div className="text-6xl font-semibold tracking-tight text-white/95">{d}</div><div className="mt-1 text-white/60">из 100</div></div>
+            <div className="text-center"><div className="text-6xl font-semibold tracking-tight text-[#1b2d6f]">{d}</div><div className="mt-1 text-[#1b2d6f]/70">из 100</div></div>
           </div>
         </div>);
       }
       function Metric({label,value}){ const pct=Math.round(value*100);
-        return(<div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-          <div className="text-xs text-white/60 mb-2">{label}</div>
+        return(<div className="rounded-2xl border border-[#1b2d6f]/10 bg-white p-3" role="group" aria-label={label}>
+          <div className="text-xs text-[#1b2d6f]/70 mb-2">{label}</div>
           <div className="flex items-center gap-3">
-            <div className="relative h-2 flex-1 rounded-full bg-white/10 overflow-hidden">
-              <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#00E5FF] via-[#00FFA3] to-[#7B61FF]" style={{width:`${pct}%`}}/>
+            <div className="relative h-2 flex-1 rounded-full bg-[#1b2d6f]/10 overflow-hidden" aria-hidden="true">
+              <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#1b2d6f] to-[#10afab]" style={{width:`${pct}%`}}/>
             </div>
-            <div className="text-sm text-white/80 w-10 text-right tabular-nums">{pct}%</div>
+            <div className="text-sm text-[#1b2d6f] w-10 text-right tabular-nums" aria-live="polite">{pct}%</div>
           </div>
         </div>);
       }
-      function Toast({message,onClose}){ useEffect(function(){ const id=setTimeout(onClose,2400); return function(){ clearTimeout(id); }; },[onClose]);
-        return <div className="fixed right-4 bottom-4 z-50 rounded-2xl bg-white text-black px-4 py-3 shadow-lg">{message}</div>;
+      function Toast({message,onClose}){ React.useEffect(function(){ const id=setTimeout(onClose,2400); return function(){ clearTimeout(id); }; },[onClose]);
+        return <div className="fixed right-4 bottom-4 z-50 rounded-2xl bg-[#1b2d6f] text-white px-4 py-3 shadow-lg" role="status" aria-live="polite">{message}</div>;
       }
 
       /* ===== Drag&Drop загрузка ===== */
@@ -200,18 +208,18 @@
           tabIndex={0} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
           role="button" aria-label="Загрузить фотографию"
           className={["group relative flex flex-col items-center justify-center","h-[280px] rounded-3xl border-2 border-dashed",
-            (drag||focused)?"border-white/40":"border-white/20","bg-white/[0.04] backdrop-blur-xl","p-8 md:p-12 text-center cursor-pointer transition-colors",
-            drag?"ring-2 ring-white/40 bg-white/[0.06]":"hover:bg-white/[0.06]",focused?"outline-none ring-2 ring-white/30":""].join(" ")}
+            (drag||focused)?"border-[#1b2d6f]/40":"border-[#1b2d6f]/20","bg-white","p-8 md:p-12 text-center cursor-pointer transition-colors",
+            drag?"ring-2 ring-[#1b2d6f]/30 bg-[#10afab]/5":"hover:bg-[#10afab]/5",focused?"outline-none ring-2 ring-[#10afab]/40":""].join(" ")}
         >
-          <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.08]">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="opacity-90">
+          <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-[#10afab]/10">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="opacity-90 text-[#1b2d6f]">
               <path d="M12 16V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               <path d="M7 9l5-5 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               <rect x="3" y="12" width="18" height="8" rx="2" stroke="currentColor" strokeWidth="1.5"/>
             </svg>
           </div>
-          <div className="text-xl md:text-2xl font-semibold text-white/90">Перетащите фото сюда</div>
-          <div className="mt-2 text-white/60">или нажмите, чтобы выбрать файл · Ctrl/Cmd+V — вставить</div>
+          <div className="text-xl md:text-2xl font-semibold text-[#1b2d6f]">Перетащите фото сюда</div>
+          <div className="mt-2 text-[#1b2d6f]/70">или нажмите, чтобы выбрать файл · Ctrl/Cmd+V — вставить</div>
           <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e=>handleFile(e.currentTarget.files && e.currentTarget.files[0])}/>
         </div>);
       }
@@ -268,131 +276,139 @@
         async function exportPNG(){
           if(!score || !imgURL) return;
           const W=1080,H=1350,c=document.createElement('canvas'); c.width=W; c.height=H; const ctx=c.getContext('2d'); if(!ctx) return;
-          const bg=ctx.createLinearGradient(0,0,W,H); bg.addColorStop(0,'#0b0b0f'); bg.addColorStop(1,'#1a1b22'); ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
-          const rg=ctx.createRadialGradient(W*0.8,H*0.1,0,W*0.8,H*0.1,W*0.6); rg.addColorStop(0,'rgba(123,97,255,0.35)'); rg.addColorStop(1,'transparent'); ctx.fillStyle=rg; ctx.fillRect(0,0,W,H);
+          // Светлый фон + мягкие акценты
+          ctx.fillStyle='#f6f6f6'; ctx.fillRect(0,0,W,H);
+          const rg=ctx.createRadialGradient(W*0.8,H*0.1,0,W*0.8,H*0.1,W*0.6); rg.addColorStop(0,'rgba(16,175,171,0.18)'); rg.addColorStop(1,'transparent'); ctx.fillStyle=rg; ctx.fillRect(0,0,W,H);
+
           const img=await new Promise(function(res,rej){ const im=new Image(); im.crossOrigin='anonymous'; im.onload=function(){res(im)}; im.onerror=function(){rej()}; im.src=imgURL; });
+
           const px=90,py=140,pw=W-180,ph=620,r=36;
           ctx.save(); ctx.beginPath(); ctx.moveTo(px+r,py); ctx.arcTo(px+pw,py,px+pw,py+ph,r); ctx.arcTo(px+pw,py+ph,px,py+ph,r); ctx.arcTo(px,py+ph,px,py,r); ctx.arcTo(px,py,px+pw,py,r); ctx.closePath(); ctx.clip();
           const ir=img.width/img.height, fr=pw/ph; var dw=pw,dh=ph,dx=px,dy=py;
           if(ir>fr){ dh=ph; dw=ph*ir; dx=px-(dw-pw)/2; } else { dw=pw; dh=pw/ir; dy=py-(dh-ph)/2; }
           ctx.drawImage(img,dx,dy,dw,dh); ctx.restore();
-          ctx.fillStyle='white'; ctx.font='600 68px system-ui,-apple-system,Segoe UI,Roboto'; ctx.fillText('SmileScore',90,980);
-          const cx=260,cy=1120,rr=120,sw=18; ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=sw; ctx.lineCap='round'; ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.stroke();
-          const grad=ctx.createLinearGradient(cx-rr,cy-rr,cx+rr,cy+rr); grad.addColorStop(0,'#00E5FF'); grad.addColorStop(0.5,'#00FFA3'); grad.addColorStop(1,'#7B61FF'); ctx.strokeStyle=grad;
+
+          // Текст и кольцо в новой палитре
+          ctx.fillStyle='#1b2d6f'; ctx.font='600 68px system-ui,-apple-system,Segoe UI,Roboto'; ctx.fillText('SmileScore',90,980);
+          const cx=260,cy=1120,rr=120,sw=18; ctx.strokeStyle='rgba(27,45,111,0.2)'; ctx.lineWidth=sw; ctx.lineCap='round'; ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.stroke();
+          const grad=ctx.createLinearGradient(cx-rr,cy-rr,cx+rr,cy+rr); grad.addColorStop(0,'#1b2d6f'); grad.addColorStop(1,'#10afab'); ctx.strokeStyle=grad;
           const end=(-Math.PI/2)+(Math.PI*2)*(score/100); ctx.beginPath(); ctx.arc(cx,cy,rr,-Math.PI/2,end); ctx.stroke();
           ctx.textAlign='center'; ctx.font='600 64px system-ui,-apple-system,Segoe UI,Roboto'; ctx.fillText(String(score),cx,cy+24);
           ctx.textAlign='left'; ctx.font='600 48px system-ui,-apple-system,Segoe UI,Roboto'; ctx.fillText(verdict(score),430,1100);
-          ctx.font='32px system-ui,-apple-system,Segoe UI,Roboto'; ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.fillText('Дата оценки: '+prettyDate(),430,1150);
+          ctx.font='32px system-ui,-apple-system,Segoe UI,Roboto'; ctx.fillStyle='rgba(27,45,111,0.75)'; ctx.fillText('Дата оценки: '+prettyDate(),430,1150);
           await new Promise(function(r){ c.toBlob(function(b){ if(!b) return; const url=URL.createObjectURL(b); const a=document.createElement('a'); a.href=url; a.download='SmileScore.png'; a.click(); URL.revokeObjectURL(url); r(); },'image/png'); });
         }
 
-        const gradientBg="bg-[#0b0b0f] bg-[radial-gradient(1200px_600px_at_80%_-10%,rgba(123,97,255,0.20),transparent_60%),radial-gradient(900px_500px_at_20%_120%,rgba(0,229,255,0.12),transparent_60%)]";
+        const gradientBg = "bg-[#f6f6f6] bg-[radial-gradient(1200px_600px_at_80%_-10%,rgba(27,45,111,0.08),transparent_60%),radial-gradient(900px_500px_at_20%_120%,rgba(16,175,171,0.12),transparent_60%)]";
 
-        return (<div className={'min-h-screen text-white selection:bg-white/20 selection:text-white '+gradientBg}>
-          <div className="pointer-events-none fixed inset-0 -z-10 opacity-25 [background:linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:32px_32px]" />
-          <div className="sticky top-0 z-30 backdrop-blur-xl bg-black/30 border-b border-white/10">
-            <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-3"><div className="h-6 w-6 rounded-[8px] bg-gradient-to-br from-white to-white/40 shadow-inner" /><span className="text-sm tracking-wide text-white/80">SmileScore</span></div>
-              <div className="text-xs text-white/50">{prettyDate()}</div>
-            </div>
-          </div>
+        return (
+          <div className={'min-h-screen text-[#1b2d6f] selection:bg-[#10afab]/30 selection:text-[#1b2d6f] '+gradientBg}>
+            <div className="pointer-events-none fixed inset-0 -z-10 opacity-40 [background:linear-gradient(to_right,rgba(27,45,111,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(27,45,111,0.06)_1px,transparent_1px)] [background-size:32px_32px]" />
 
-          <main className="mx-auto max-w-6xl px-4 py-10 md:py-16">
-            <div className="max-w-3xl">
-              <motion.h1 initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{duration:0.6}}
-                className="text-4xl md:text-6xl font-semibold tracking-tight bg-gradient-to-br from-white to-white/70 bg-clip-text text-transparent">
-                Оценка улыбки <span className="text-white/50">по фото</span>
-              </motion.h1>
-              <p className="mt-4 text-white/70 text-lg md:text-xl">Загрузите портрет — и получите бережную, вдохновляющую оценку. Только позитивные вибрации ✌️</p>
+            <div className="sticky top-0 z-30 backdrop-blur-xl bg-white/70 border-b border-[#1b2d6f]/10">
+              <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-3"><div className="h-6 w-6 rounded-[8px] bg-gradient-to-br from-[#1b2d6f] to-[#10afab] shadow-inner" /><span className="text-sm tracking-wide text-[#1b2d6f]/80">SmileScore</span></div>
+                <div className="text-xs text-[#1b2d6f]/60">{prettyDate()}</div>
+              </div>
             </div>
 
-            <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                {!imgURL ? (
-                  <DropZone onFile={acceptFile}/>
-                ) : (
-                  <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-xl">
-                    <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(600px_240px_at_10%_10%,rgba(255,255,255,0.06),transparent)]"/>
-                    <img src={imgURL||''} alt="Предпросмотр" className="w-full h-[420px] object-cover block"/>
-                    <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-2xl bg-black/40 px-3 py-1.5 backdrop-blur">
-                      <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse"/><span className="text-xs text-white/80">Фото на устройстве</span>
-                    </div>
-                    {imgTooDark && (
-                      <div className="absolute inset-0 grid place-items-center bg-black/60 text-center p-6">
-                        <div className="text-white/90">
-                          <div className="text-lg font-semibold mb-1">Кадр выглядит слишком тёмным</div>
-                          <div className="text-white/70 text-sm">Попробуйте другое фото или сохраните изображение как JPG/PNG и загрузите снова.</div>
-                        </div>
+            <main className="mx-auto max-w-6xl px-4 py-10 md:py-16">
+              <div className="max-w-3xl">
+                <motion.h1 initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{duration:0.6}}
+                  className="text-4xl md:text-6xl font-semibold tracking-tight bg-gradient-to-br from-[#1b2d6f] to-[#1b2d6f]/70 bg-clip-text text-transparent">
+                  Оценка улыбки <span className="text-[#1b2d6f]/60">по фото</span>
+                </motion.h1>
+                <p className="mt-4 text-[#1b2d6f]/80 text-lg md:text-xl">Загрузите портрет — и получите бережную, вдохновляющую оценку. Только позитивные вибрации ✌️</p>
+              </div>
+
+              <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  {!imgURL ? (
+                    <DropZone onFile={acceptFile}/>
+                  ) : (
+                    <div className="relative overflow-hidden rounded-3xl border border-[#1b2d6f]/10 bg-white shadow-sm">
+                      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(600px_240px_at_10%_10%,rgba(16,175,171,0.06),transparent)]"/>
+                      <img src={imgURL||''} alt="Предпросмотр" className="w-full h-[420px] object-cover block"/>
+                      <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-2xl bg-[#1b2d6f]/10 px-3 py-1.5 backdrop-blur">
+                        <span className="inline-block h-2 w-2 rounded-full bg-[#10afab] animate-pulse"/><span className="text-xs text-[#1b2d6f]/80">Фото на устройстве</span>
                       </div>
-                    )}
-                    <div className="absolute right-4 bottom-4 flex gap-2">
-                      <button onClick={reset} className="rounded-xl bg-white/10 hover:bg-white/20 px-3 py-2 text-sm">Заменить фото</button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <button onClick={handleAnalyze} disabled={!imgURL || busy}
-                    className="rounded-2xl bg-white text-black px-5 py-3 text-sm font-medium shadow-lg disabled:opacity-40 disabled:cursor-not-allowed">
-                    {busy?'Анализ…':'Оценить улыбку'}
-                  </button>
-                  <button onClick={exportPNG} disabled={!score || !imgURL}
-                    className="rounded-2xl bg-white/10 hover:bg-white/20 px-4 py-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed">
-                    Сохранить PNG
-                  </button>
-                  <label className="flex items-center gap-2 text-white/70 text-sm select-none">
-                    <input type="checkbox" checked={autoAnalyze} onChange={e=>setAutoAnalyze(e.currentTarget.checked)} className="accent-white"/> Авто-оценка после загрузки
-                  </label>
-                </div>
-
-                {history.length>0 && (<div className="mt-2">
-                  <div className="mb-2 text-white/60 text-sm">История</div>
-                  <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                    {history.map((h,i)=>(
-                      <button key={i} onClick={()=>{ setImgURL(h.url); setScore(h.score); setToast('Открыли сохранённый результат'); }}
-                        className="relative group rounded-xl overflow-hidden border border-white/10">
-                        <img src={h.url} alt={'result-'+i} className="h-24 w-full object-cover"/>
-                        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity"/>
-                        <div className="absolute left-1.5 bottom-1.5 px-1.5 py-0.5 rounded-lg bg-black/60 text-white/90 text-[11px]">{h.score}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>)}
-              </div>
-
-              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-6 md:p-8 backdrop-blur-xl">
-                <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(500px_200px_at_85%_15%,rgba(255,255,255,0.07),transparent)]"/>
-                <div className="flex flex-col items-center justify-center min-h-[420px] text-center">
-                  <AnimatePresence mode="wait">
-                    {score==null ? (
-                      <motion.div key="empty" initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:0.4}} className="text-white/70">
-                        <div className="text-2xl md:text-3xl">Готовы увидеть свою лучезарность? ✨</div>
-                        <div className="mt-2">Загрузите фото и нажмите «Оценить улыбку»</div>
-                      </motion.div>
-                    ) : (
-                      <motion.div key="score" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:0.5}} className="w-full">
-                        <div className="flex flex-col items-center gap-6">
-                          <ScoreRing score={score}/>
-                          <div className="text-2xl md:text-3xl font-semibold tracking-tight">{verdict(score)}</div>
-                          {metrics && (<div className="grid grid-cols-3 gap-3 w-full max-w-md">
-                            <Metric label="Освещённость" value={metrics.brightness}/>
-                            <Metric label="Насыщенность" value={metrics.saturation}/>
-                            <Metric label="Тёплые тона" value={metrics.warmth}/>
-                          </div>)}
-                          <div className="text-xs text-white/50">Дата оценки: {prettyDate()}</div>
+                      {imgTooDark && (
+                        <div className="absolute inset-0 grid place-items-center bg-white/80 text-center p-6">
+                          <div className="text-[#1b2d6f]">
+                            <div className="text-lg font-semibold mb-1">Кадр выглядит слишком тёмным</div>
+                            <div className="text-[#1b2d6f]/80 text-sm">Попробуйте другое фото или сохраните изображение как JPG/PNG и загрузите снова.</div>
+                          </div>
                         </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                      )}
+                      <div className="absolute right-4 bottom-4 flex gap-2">
+                        <button onClick={reset} className="rounded-xl border border-[#1b2d6f]/20 hover:bg-[#10afab]/10 px-3 py-2 text-sm text-[#1b2d6f]">Заменить фото</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button onClick={handleAnalyze} disabled={!imgURL || busy}
+                      className="rounded-2xl bg-[#10afab] text-white px-5 py-3 text-sm font-medium shadow disabled:opacity-40 disabled:cursor-not-allowed">
+                      {busy?'Анализ…':'Оценить улыбку'}
+                    </button>
+                    <button onClick={exportPNG} disabled={!score || !imgURL}
+                      className="rounded-2xl border border-[#1b2d6f]/20 hover:bg-[#10afab]/10 px-4 py-3 text-sm text-[#1b2d6f] disabled:opacity-40 disabled:cursor-not-allowed">
+                      Сохранить PNG
+                    </button>
+                    <label className="flex items-center gap-2 text-[#1b2d6f]/80 text-sm select-none">
+                      <input type="checkbox" checked={autoAnalyze} onChange={e=>setAutoAnalyze(e.currentTarget.checked)} className="accent-[#10afab]"/> Авто‑оценка после загрузки
+                    </label>
+                  </div>
+
+                  {history.length>0 && (<div className="mt-2" aria-live="polite">
+                    <div className="mb-2 text-[#1b2d6f]/70 text-sm">История</div>
+                    <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                      {history.map((h,i)=>(
+                        <button key={i} onClick={()=>{ setImgURL(h.url); setScore(h.score); setToast('Открыли сохранённый результат'); }}
+                          className="relative group rounded-xl overflow-hidden border border-[#1b2d6f]/10 bg-white">
+                          <img src={h.url} alt={'result-'+i} className="h-24 w-full object-cover" loading="lazy"/>
+                          <div className="absolute inset-0 bg-[#1b2d6f]/10 opacity-0 group-hover:opacity-100 transition-opacity"/>
+                          <div className="absolute left-1.5 bottom-1.5 px-1.5 py-0.5 rounded-lg bg-white/80 text-[#1b2d6f] text-[11px]">{h.score}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>)}
+                </div>
+
+                <div className="relative overflow-hidden rounded-3xl border border-[#1b2d6f]/10 bg-white p-6 md:p-8 shadow-sm">
+                  <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(500px_200px_at_85%_15%,rgba(27,45,111,0.07),transparent)]"/>
+                  <div className="flex flex-col items-center justify-center min-h-[420px] text-center">
+                    <AnimatePresence mode="wait">
+                      {score==null ? (
+                        <motion.div key="empty" initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:0.4}} className="text-[#1b2d6f]/70">
+                          <div className="text-2xl md:text-3xl">Готовы увидеть свою лучезарность? ✨</div>
+                          <div className="mt-2">Загрузите фото и нажмите «Оценить улыбку»</div>
+                        </motion.div>
+                      ) : (
+                        <motion.div key="score" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:0.5}} className="w-full" aria-live="polite">
+                          <div className="flex flex-col items-center gap-6">
+                            <ScoreRing score={score}/>
+                            <div className="text-2xl md:text-3xl font-semibold tracking-tight text-[#1b2d6f]">{verdict(score)}</div>
+                            {metrics && (<div className="grid grid-cols-3 gap-3 w-full max-w-md">
+                              <Metric label="Освещённость" value={metrics.brightness}/>
+                              <Metric label="Насыщенность" value={metrics.saturation}/>
+                              <Metric label="Тёплые тона" value={metrics.warmth}/>
+                            </div>)}
+                            <div className="text-xs text-[#1b2d6f]/60">Дата оценки: {prettyDate()}</div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="mt-10 text-center text-white/50 text-sm">Создано с заботой. Это развлекательная оценка и всегда позитивная. Улыбнитесь сегодня кому-нибудь 😊</div>
-          </main>
+              <div className="mt-10 text-center text-[#1b2d6f]/60 text-sm">Создано с заботой. Это развлекательная оценка и всегда позитивная. Улыбнитесь сегодня кому‑нибудь 😊</div>
+            </main>
 
-          {toast && <Toast message={toast} onClose={()=>setToast(null)}/>}
-        </div>);
+            {toast && <Toast message={toast} onClose={()=>setToast(null)}/>}
+          </div>
+        );
       }
 
       // sanity-check
